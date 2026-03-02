@@ -468,7 +468,7 @@
     let selectedImageFile=null,isSending=false,abortController=null,isUserScrolling=false;
     let currentMode="auto";
     let renderState={lastRenderTime:0,timeoutId:null,THROTTLE_MS:65};
-    const REQUEST_TIMEOUT_MS=0,STREAM_IDLE_TIMEOUT_MS=120000;
+    const REQUEST_TIMEOUT_MS=0,STREAM_IDLE_TIMEOUT_MS=300000;
     const INVISIBLE_HEARTBEAT_RE=/\u200b/g;
     const TRINITAS_STATS_RE=/\n?\[\[TRINITAS_STATS:(.*?)\]\]\n?/g;
     const TOKEN_STATS_RE=/\n?\[\[TOKEN_STATS:.*?\]\]\n?/g;
@@ -477,6 +477,7 @@
     const FINAL_PHASES=new Set(["FINAL","FINAL_FORCED"]);
     const PHASE_LABELS={
       OCULUS_VISION_ANALYSIS:"Oculus 视觉分析",ROUTER_DECISION:"Router 风险路由",
+      CONTEXT_BUILD:"Context 上下文构建",
       ALPHA_GENERATION:"Alpha 主生成",BETA_REVIEW:"Beta 逻辑审查",
       GAMMA_FINAL_REVIEW:"Gamma 终审裁决",RETRY_ON_GAMMA_JSON_PARSE:"Gamma JSON 解析失败重试",
       RETRY_ON_LOW_CONFIDENCE:"低置信度重试",RETRY_ON_VISION_STAGE_FAILURE:"视觉阶段失败重试",

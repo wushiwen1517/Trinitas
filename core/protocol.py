@@ -52,7 +52,8 @@ class OllamaStreamExecutor:
                     max_keepalive_connections=10, max_connections=20,
                     keepalive_expiry=300.0,
                 )
-                self._client = httpx.AsyncClient(timeout=timeout, limits=limits)
+                # 强制忽略系统代理环境变量，避免本地 Ollama 被错误走代理导致“网络异常/长时间转圈”
+                self._client = httpx.AsyncClient(timeout=timeout, limits=limits, trust_env=False)
             return self._client
 
     async def close(self) -> None:
