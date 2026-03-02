@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trinitas</title>
+  <link rel="icon" href="data:image/svg+xml,<svg viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'><path d='M16 6L28 26H4Z' fill='none' stroke='%235b9cff' stroke-width='2'/><circle cx='16' cy='6' r='3' fill='%235b9cff'/><circle cx='28' cy='26' r='3' fill='%237db2ff'/><circle cx='4' cy='26' r='3' fill='%235b9cff'/></svg>" />
+  <style>
+    :root{
+      --bg:#131314;--surface:#1e1f20;--surface-2:#282a2c;--surface-3:#303134;
+      --text:#e3e3e3;--text-2:#c4c7c5;--muted:#8e918f;--line:#3c4043;
+      --accent:#8ab4f8;--accent-2:#aecbfa;--accent-dark:#1a73e8;
+      --danger:#f28b82;--success:#81c995;--warning:#fdd663;
+      --shadow:0 1px 3px rgba(0,0,0,.3),0 4px 8px rgba(0,0,0,.15);
+      --radius:24px;--radius-sm:16px;--radius-xs:12px;
+      --msg-user:#303134;--msg-ai:transparent;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{width:100%;height:100%;overflow:hidden}
+    body{
+      background:var(--bg);color:var(--text);
+      font-family:'Google Sans','Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;
+      font-size:15px;line-height:1.6;
+    }
+    ::-webkit-scrollbar{width:6px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
+    ::-webkit-scrollbar-thumb:hover{background:#555}
+
+    .app{display:grid;grid-template-columns:260px 1fr;height:100vh;width:100vw}
+
+    /* ===== Sidebar ===== */
+    .sidebar{
+      background:var(--surface);display:flex;flex-direction:column;
+      border-right:1px solid var(--line);min-width:0;
+    }
+    .sidebar-header{
+      padding:16px;display:flex;align-items:center;gap:10px;
+    }
+    .logo-icon{width:28px;height:28px;flex:0 0 auto}
+    .logo-text{font-size:20px;font-weight:500;color:var(--text);letter-spacing:-.3px}
+    .sidebar-new-chat{
+      margin:0 12px 12px;padding:12px;border-radius:var(--radius);
+      background:transparent;border:1px solid var(--line);color:var(--text);
+      cursor:pointer;font-size:14px;font-weight:500;display:flex;
+      align-items:center;gap:8px;justify-content:center;transition:.15s;
+    }
+    .sidebar-new-chat:hover{background:var(--surface-2)}
+    .sidebar-new-chat svg{width:20px;height:20px}
+
+    .sidebar-section-title{
+      padding:10px 16px 6px;font-size:11px;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.08em;font-weight:500;
+    }
+    .chat-list{flex:1;min-height:0;overflow:auto;padding:0 8px 8px}
+    .chat-item{
+      padding:10px 12px;border-radius:var(--radius-xs);cursor:pointer;
+      display:flex;align-items:center;gap:8px;margin-bottom:2px;
+      transition:.12s;color:var(--text-2);font-size:14px;
+      border:1px solid transparent;
+    }
+    .chat-item:hover{background:var(--surface-2)}
+    .chat-item.active{background:var(--surface-3);border-color:var(--line)}
+    .chat-item-main{flex:1;min-width:0;overflow:hidden}
+    .chat-item-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .chat-item-meta{font-size:11px;color:var(--muted);margin-top:2px}
+    .chat-item-actions{display:flex;gap:4px;opacity:0;transition:.1s}
+    .chat-item:hover .chat-item-actions,.chat-item.active .chat-item-actions{opacity:1}
+    .icon-btn{
+      width:28px;height:28px;border-radius:8px;border:none;
+      background:transparent;color:var(--muted);cursor:pointer;
+      display:grid;place-items:center;font-size:14px;transition:.1s;
+    }
+    .icon-btn:hover{background:var(--surface-3);color:var(--text)}
+    .icon-btn.danger:hover{color:var(--danger);background:rgba(242,139,130,.1)}
+
+    .sidebar-footer{
+      padding:12px;border-top:1px solid var(--line);
+    }
+    .api-row{display:flex;gap:6px}
+    .api-row input{
+      flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--line);
+      color:var(--text);border-radius:var(--radius-xs);padding:8px 10px;
+      outline:none;font-size:13px;
+    }
+    .api-row input:focus{border-color:var(--accent)}
+    .btn{
+      border:1px solid var(--line);background:var(--surface-2);color:var(--text);
+      border-radius:var(--radius-xs);padding:8px 12px;cursor:pointer;
+      font-size:13px;font-weight:500;transition:.12s;
+    }
+    .btn:hover{background:var(--surface-3)}
+    .btn.primary{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff}
+    .btn.primary:hover{background:#1565c0}
+    .verify-status{font-size:11px;color:var(--muted);margin-top:4px;min-height:16px}
+    .verify-status.success{color:var(--success)}
+    .verify-status.error{color:var(--danger)}
+
+    /* ===== Main ===== */
+    .main{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+
+    .topbar{
+      height:52px;display:flex;align-items:center;justify-content:space-between;
+      padding:0 20px;border-bottom:1px solid var(--line);flex:0 0 auto;
+    }
+    .topbar-left{display:flex;align-items:center;gap:8px}
+    .topbar-title{font-size:16px;font-weight:500;color:var(--text)}
+    .topbar-sub{font-size:12px;color:var(--muted)}
+
+    /* ===== Messages ===== */
+    .messages{
+      flex:1;min-height:0;overflow:auto;padding:20px 10%;
+      display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth;
+    }
+    .empty-state{
+      margin:auto;text-align:center;color:var(--muted);padding:40px 20px;
+    }
+    .empty-greeting{font-size:28px;font-weight:400;color:var(--text);margin-bottom:8px}
+    .empty-sub{font-size:15px;color:var(--muted)}
+
+    .msg-row{display:flex;width:100%;animation:fadeIn .2s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    .msg-row.user{justify-content:flex-end}
+    .msg-row.assistant{justify-content:flex-start}
+
+    .msg-bubble{max-width:min(800px,100%);border-radius:var(--radius);overflow:hidden}
+    .msg-row.user .msg-bubble{
+      background:var(--msg-user);padding:12px 16px;
+      border-bottom-right-radius:6px;max-width:min(680px,85%);
+    }
+    .msg-row.assistant .msg-bubble{max-width:min(900px,100%);background:transparent}
+
+    .msg-user-content{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.6}
+    .msg-user-image-tag{
+      display:inline-flex;align-items:center;gap:6px;
+      background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+      border-radius:999px;padding:3px 10px;font-size:12px;color:var(--accent-2);margin-bottom:8px;
+    }
+
+    /* ===== Assistant Card ===== */
+    .assistant-card{display:flex;flex-direction:column}
+    .assistant-think{
+      border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:8px;
+      background:var(--surface);overflow:hidden;
+    }
+    .assistant-think summary{
+      list-style:none;cursor:pointer;display:flex;align-items:center;
+      justify-content:space-between;gap:8px;padding:10px 14px;user-select:none;
+    }
+    .assistant-think summary::-webkit-details-marker{display:none}
+    .assistant-think-left{display:flex;align-items:center;gap:8px;min-width:0}
+    .spinner{
+      width:14px;height:14px;border-radius:50%;
+      border:2px solid rgba(255,255,255,.15);border-top-color:var(--accent);
+      animation:spin .85s linear infinite;flex:0 0 auto;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .spinner.stopped{animation:none;border-color:var(--success);border-top-color:var(--success)}
+    .dots::after{content:"";display:inline-block;width:1.6em;text-align:left;animation:dots 1.2s steps(4,end) infinite}
+    @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}100%{content:""}}
+
+    .assistant-think-title{color:var(--text);font-size:13px;font-weight:500}
+    .assistant-think-meta{color:var(--muted);font-size:12px}
+    .assistant-think-body{padding:0 14px 14px;display:flex;flex-direction:column;gap:8px}
+
+    .phase-card{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-xs);overflow:hidden}
+    .phase-head{
+      display:flex;align-items:center;justify-content:space-between;
+      gap:8px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.04);
+    }
+    .phase-name{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--text-2);font-size:12px}
+    .phase-dot{width:8px;height:8px;border-radius:50%;background:#555;flex:0 0 auto}
+    .phase-card.active .phase-dot{background:var(--accent);animation:pulse 1.1s infinite}
+    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(138,180,248,.4)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+    .phase-status{font-size:11px;color:var(--muted)}
+    .phase-content{
+      padding:10px 12px;color:var(--text-2);font-size:13px;line-height:1.6;
+      white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto;
+    }
+
+    .assistant-final{padding:4px 0}
+    .assistant-final-title{
+      color:var(--text);font-weight:500;font-size:13px;margin-bottom:8px;
+      display:flex;align-items:center;gap:8px;
+    }
+    .assistant-final-content{color:var(--text);line-height:1.75;font-size:15px;word-break:break-word}
+    .assistant-final-content p{margin:0 0 12px}
+    .assistant-final-content p:last-child{margin-bottom:0}
+    .assistant-final-content pre{
+      margin:12px 0;padding:14px;background:var(--surface);
+      border:1px solid var(--line);border-radius:var(--radius-xs);
+      overflow:auto;color:var(--text-2);line-height:1.55;font-size:13px;
+    }
+    .assistant-final-content code{font-family:ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:.9em}
+    .assistant-final-content .inline-code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:1px 5px}
+    .assistant-final-content strong{color:#fff}
+    .assistant-final-content h2{color:var(--text);font-size:17px;font-weight:500;margin:18px 0 8px}
+    .assistant-final-content h3{color:var(--text-2);font-size:15px;font-weight:500;margin:14px 0 6px}
+
+    /* ===== Stats ===== */
+    .assistant-stats{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;margin-top:4px}
+    .stat-badge{
+      display:inline-flex;align-items:center;gap:4px;
+      background:var(--surface);border:1px solid var(--line);
+      border-radius:20px;padding:3px 10px;font-size:11px;color:var(--muted);white-space:nowrap;
+    }
+    .stat-badge .stat-value{color:var(--text-2);font-weight:500}
+    .stat-badge.time{border-color:rgba(129,201,149,.25);color:rgba(129,201,149,.8)}
+    .stat-badge.time .stat-value{color:var(--success)}
+    .stat-badge.speed{border-color:rgba(253,214,99,.25);color:rgba(253,214,99,.7)}
+    .stat-badge.speed .stat-value{color:var(--warning)}
+    .stat-badge.context{border-color:rgba(242,139,130,.2);color:rgba(242,139,130,.7)}
+    .stat-badge.context .stat-value{color:var(--danger)}
+    .stat-badge.context.warning{animation:ctxPulse 1.5s infinite}
+    @keyframes ctxPulse{0%,100%{opacity:1}50%{opacity:.65}}
+    .thinking-timer{font-variant-numeric:tabular-nums}
+
+    .assistant-meta{
+      display:flex;justify-content:space-between;align-items:center;gap:8px;
+      padding:6px 0;color:var(--muted);font-size:12px;border-top:1px solid var(--line);margin-top:4px;
+    }
+    .assistant-streaming{display:inline-flex;align-items:center;gap:6px;color:var(--accent-2);font-size:12px}
+
+    /* ===== Composer ===== */
+    .composer-wrap{
+      padding:12px 10%;background:var(--bg);position:sticky;bottom:0;z-index:3;
+    }
+    .composer{
+      border:1px solid var(--line);background:var(--surface);
+      border-radius:var(--radius);overflow:hidden;
+      box-shadow:0 -4px 20px rgba(0,0,0,.15);
+    }
+    .image-preview-bar{
+      display:none;border-bottom:1px solid var(--line);padding:10px 14px;
+    }
+    .image-preview-card{
+      display:inline-flex;align-items:center;gap:10px;
+      border:1px solid var(--line);background:var(--surface-2);
+      border-radius:var(--radius-xs);padding:8px;
+    }
+    .image-preview-card img{width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+    .image-preview-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
+    .image-preview-name{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+    .image-preview-tip{color:var(--muted);font-size:11px}
+
+    .mode-selector{
+      display:flex;gap:0;padding:4px 8px;border-bottom:1px solid var(--line);
+    }
+    .mode-option{
+      flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+      padding:8px 12px;border-radius:var(--radius-xs);cursor:pointer;
+      user-select:none;transition:.15s;border:1px solid transparent;
+      font-size:13px;color:var(--muted);
+    }
+    .mode-option:hover{background:var(--surface-2)}
+    .mode-option.active{background:var(--surface-3);border-color:var(--line);color:var(--text)}
+    .mode-option .mode-radio{
+      width:14px;height:14px;border-radius:50%;border:2px solid var(--line);
+      display:grid;place-items:center;flex:0 0 auto;transition:.15s;
+    }
+    .mode-option.active .mode-radio{border-color:var(--accent);background:var(--accent)}
+    .mode-option .mode-radio::after{
+      content:"";width:6px;height:6px;border-radius:50%;
+      background:#fff;opacity:0;transition:.15s;
+    }
+    .mode-option.active .mode-radio::after{opacity:1}
+    .mode-label{display:flex;flex-direction:column;gap:1px}
+    .mode-name{font-weight:500;font-size:13px}
+    .mode-desc{font-size:10px;opacity:.6;line-height:1.2}
+
+    .composer-main{display:flex;align-items:flex-end;gap:8px;padding:10px 12px}
+    .composer-left,.composer-right{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+    .composer-center{flex:1;min-width:0}
+    .action-btn{
+      width:38px;height:38px;border-radius:50%;border:none;
+      background:transparent;color:var(--muted);display:grid;
+      place-items:center;cursor:pointer;transition:.12s;font-size:18px;
+    }
+    .action-btn:hover{background:var(--surface-3);color:var(--text)}
+
+    textarea#inputBox{
+      width:100%;min-height:24px;max-height:200px;resize:none;border:none;
+      outline:none;background:transparent;color:var(--text);font-size:15px;
+      line-height:1.5;padding:8px 4px;font-family:inherit;
+    }
+    textarea#inputBox::placeholder{color:var(--muted)}
+
+    .send-btn{
+      width:40px;height:40px;border-radius:50%;border:none;
+      background:var(--accent-dark);color:#fff;display:grid;
+      place-items:center;cursor:pointer;transition:.15s;font-size:18px;
+    }
+    .send-btn:hover{background:#1565c0}
+    .send-btn:disabled{opacity:.4;cursor:not-allowed}
+    .send-btn.stop-btn{background:var(--danger)}
+    .send-btn.stop-btn:hover{background:#e57373}
+
+    .composer-hint{color:var(--muted);font-size:11px;padding:0 14px 8px;text-align:center}
+
+    /* ===== Mobile topbar buttons (hidden on desktop) ===== */
+    .mobile-btn{
+      display:none;width:36px;height:36px;border-radius:50%;border:none;
+      background:transparent;color:var(--text-2);cursor:pointer;
+      place-items:center;font-size:20px;transition:.12s;
+    }
+    .mobile-btn:hover{background:var(--surface-2)}
+
+    /* ===== Mobile sidebar overlay ===== */
+    .sidebar-backdrop{
+      display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:90;
+      opacity:0;transition:opacity .25s;
+    }
+    .sidebar-backdrop.open{display:block;opacity:1}
+
+    /* ===== Responsive ===== */
+    @media(max-width:1100px){.messages,.composer-wrap{padding-left:5%;padding-right:5%}}
+    @media(max-width:820px){
+      .app{grid-template-columns:1fr}
+      .sidebar{
+        position:fixed;left:0;top:0;bottom:0;width:280px;z-index:100;
+        transform:translateX(-100%);transition:transform .25s ease;
+      }
+      .sidebar.open{transform:translateX(0)}
+      .mobile-btn{display:grid}
+      .messages,.composer-wrap{padding-left:12px;padding-right:12px}
+      .topbar{padding:0 8px}
+      .topbar-left{gap:4px}
+      .composer-wrap{padding:8px 8px}
+      .mode-option .mode-desc{display:none}
+      .mode-option .mode-name{font-size:12px}
+      .mode-option{padding:6px 8px;gap:4px}
+      .composer-main{padding:8px}
+      .empty-greeting{font-size:22px}
+      .assistant-think-body{padding:0 8px 8px}
+      .phase-content{max-height:180px;font-size:12px}
+    }
+    @media(max-width:420px){
+      .messages{padding:12px 6px}
+      .composer-wrap{padding:6px 4px}
+      .stat-badge{font-size:10px;padding:2px 6px}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <svg class="logo-icon" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5b9cff"/><stop offset="100%" stop-color="#aecbfa"/></linearGradient></defs>
+          <path d="M16 6L28 26H4Z" fill="none" stroke="url(#lg)" stroke-width="1.8" stroke-linejoin="round"/>
+          <circle cx="16" cy="6" r="2.5" fill="url(#lg)"/><circle cx="28" cy="26" r="2.5" fill="url(#lg)"/><circle cx="4" cy="26" r="2.5" fill="url(#lg)"/>
+        </svg>
+        <span class="logo-text">Trinitas</span>
+      </div>
+
+      <button id="newChatBtn" class="sidebar-new-chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        新建对话
+      </button>
+
+      <div class="sidebar-section-title">对话</div>
+      <div id="chatList" class="chat-list"></div>
+
+      <div class="sidebar-footer">
+        <div class="api-row">
+          <input id="apiKeyInput" type="password" placeholder="访问密钥" />
+          <button id="verifyBtn" class="btn primary">验证</button>
+        </div>
+        <div id="verifyStatus" class="verify-status">未验证</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="topbar-left">
+          <button id="menuBtn" class="mobile-btn" title="菜单">☰</button>
+          <svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="lg2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5b9cff"/><stop offset="100%" stop-color="#aecbfa"/></linearGradient></defs>
+            <path d="M16 6L28 26H4Z" fill="none" stroke="url(#lg2)" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="16" cy="6" r="2.5" fill="url(#lg2)"/><circle cx="28" cy="26" r="2.5" fill="url(#lg2)"/><circle cx="4" cy="26" r="2.5" fill="url(#lg2)"/>
+          </svg>
+          <span id="topbarTitle" class="topbar-title">Trinitas</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <button id="mobileNewChatBtn" class="mobile-btn" title="新对话">＋</button>
+          <span id="topbarSub" class="topbar-sub">本地多模型网关</span>
+          <span id="topbarRight" class="topbar-sub" style="margin-left:8px"></span>
+        </div>
+      </div>
+      <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+      <div id="messages" class="messages">
+        <div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 32 32" style="margin-bottom:16px;opacity:.5">
+            <defs><linearGradient id="lg3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5b9cff"/><stop offset="100%" stop-color="#aecbfa"/></linearGradient></defs>
+            <path d="M16 6L28 26H4Z" fill="none" stroke="url(#lg3)" stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="16" cy="6" r="2.5" fill="url(#lg3)"/><circle cx="28" cy="26" r="2.5" fill="url(#lg3)"/><circle cx="4" cy="26" r="2.5" fill="url(#lg3)"/>
+          </svg>
+          <div class="empty-greeting">你好，需要我做些什么？</div>
+          <div class="empty-sub">输入问题或上传图片开始对话</div>
+        </div>
+      </div>
+
+      <div class="composer-wrap">
+        <div class="composer">
+          <div id="imagePreviewBar" class="image-preview-bar">
+            <div class="image-preview-card">
+              <img id="imagePreview" alt="预览">
+              <div class="image-preview-meta">
+                <div id="imagePreviewName" class="image-preview-name">未选择图片</div>
+                <div class="image-preview-tip">将走视觉链路</div>
+              </div>
+              <button id="removeImageBtn" class="icon-btn danger" title="移除">✕</button>
+            </div>
+          </div>
+
+          <div class="mode-selector" id="modeSelector">
+            <div class="mode-option active" data-mode="auto">
+              <div class="mode-radio"></div>
+              <div class="mode-label"><div class="mode-name">Auto</div><div class="mode-desc">自动判断复杂度</div></div>
+            </div>
+            <div class="mode-option" data-mode="pro">
+              <div class="mode-radio"></div>
+              <div class="mode-label"><div class="mode-name">Pro</div><div class="mode-desc">多专家联合审查</div></div>
+            </div>
+            <div class="mode-option" data-mode="instant">
+              <div class="mode-radio"></div>
+              <div class="mode-label"><div class="mode-name">Instant</div><div class="mode-desc">即刻回答</div></div>
+            </div>
+          </div>
+
+          <div class="composer-main">
+            <div class="composer-left">
+              <button id="uploadBtn" class="action-btn" title="上传图片">📎</button>
+            </div>
+            <div class="composer-center">
+              <textarea id="inputBox" placeholder="向 Trinitas 提问…" rows="1"></textarea>
+            </div>
+            <div class="composer-right">
+              <button id="sendBtn" class="send-btn" title="发送">➤</button>
+            </div>
+          </div>
+          <div class="composer-hint">Shift+Enter 换行 · 支持粘贴图片 · Auto=路由自动判断 · Pro=强制三模型审查 · Instant=极速回答</div>
+        </div>
+        <input id="fileInput" type="file" accept="image/*" style="display:none" />
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const STORE_KEYS={apiKey:"TRINITAS_API_KEY",chats:"TRINITAS_CHATS_V2",currentChatId:"TRINITAS_CURRENT_CHAT_ID"};
+    const dom={
+      apiKeyInput:document.getElementById("apiKeyInput"),verifyBtn:document.getElementById("verifyBtn"),
+      verifyStatus:document.getElementById("verifyStatus"),newChatBtn:document.getElementById("newChatBtn"),
+      chatList:document.getElementById("chatList"),messages:document.getElementById("messages"),
+      topbarTitle:document.getElementById("topbarTitle"),topbarSub:document.getElementById("topbarSub"),
+      topbarRight:document.getElementById("topbarRight"),imagePreviewBar:document.getElementById("imagePreviewBar"),
+      imagePreview:document.getElementById("imagePreview"),imagePreviewName:document.getElementById("imagePreviewName"),
+      removeImageBtn:document.getElementById("removeImageBtn"),uploadBtn:document.getElementById("uploadBtn"),
+      fileInput:document.getElementById("fileInput"),inputBox:document.getElementById("inputBox"),
+      sendBtn:document.getElementById("sendBtn"),modeSelector:document.getElementById("modeSelector"),
+      menuBtn:document.getElementById("menuBtn"),mobileNewChatBtn:document.getElementById("mobileNewChatBtn"),
+      sidebarBackdrop:document.getElementById("sidebarBackdrop"),
+      sidebar:document.querySelector(".sidebar"),
+    };
+
+    let chats=loadChats(),currentChatId=localStorage.getItem(STORE_KEYS.currentChatId)||null;
+    let selectedImageFile=null,isSending=false,abortController=null,isUserScrolling=false;
+    let currentMode="auto";
+    let renderState={lastRenderTime:0,timeoutId:null,THROTTLE_MS:65};
+    const REQUEST_TIMEOUT_MS=0,STREAM_IDLE_TIMEOUT_MS=120000;
+    const INVISIBLE_HEARTBEAT_RE=/\u200b/g;
+    const TRINITAS_STATS_RE=/\n?\[\[TRINITAS_STATS:(.*?)\]\]\n?/g;
+    const TOKEN_STATS_RE=/\n?\[\[TOKEN_STATS:.*?\]\]\n?/g;
+    const MAX_CONTEXT_TOKENS=15000;
+    let activeTimers={};
+    const FINAL_PHASES=new Set(["FINAL","FINAL_FORCED"]);
+    const PHASE_LABELS={
+      OCULUS_VISION_ANALYSIS:"Oculus 视觉分析",ROUTER_DECISION:"Router 风险路由",
+      ALPHA_GENERATION:"Alpha 主生成",BETA_REVIEW:"Beta 逻辑审查",
+      GAMMA_FINAL_REVIEW:"Gamma 终审裁决",RETRY_ON_GAMMA_JSON_PARSE:"Gamma JSON 解析失败重试",
+      RETRY_ON_LOW_CONFIDENCE:"低置信度重试",RETRY_ON_VISION_STAGE_FAILURE:"视觉阶段失败重试",
+      RETRY_ON_ALPHA_STAGE_FAILURE:"Alpha 阶段失败重试",RETRY_ON_BETA_STAGE_FAILURE:"Beta 阶段失败重试",
+      RETRY_ON_GAMMA_STAGE_FAILURE:"Gamma 阶段失败重试",ALPHA_REGENERATION:"Alpha 审查反馈重生成",
+      ALPHA_REWRITE:"Alpha 审查反馈重写",FINAL:"最终输出",FINAL_FORCED:"强制输出"
+    };
+
+    init();
+    function init(){
+      const k=localStorage.getItem(STORE_KEYS.apiKey);if(k)dom.apiKeyInput.value=k;
+      if(!currentChatId||!chats[currentChatId]){
+        currentChatId=Object.keys(chats).length===0?createChat():sortChatIds()[0];
+        persistChats();
+      }
+      bindEvents();renderChatList();renderCurrentChat();autoResizeTextarea();
+    }
+    function bindEvents(){
+      dom.verifyBtn.addEventListener("click",onVerifyApiKey);
+      dom.newChatBtn.addEventListener("click",()=>{switchChat(createChat())});
+      dom.uploadBtn.addEventListener("click",()=>dom.fileInput.click());
+      dom.fileInput.addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];if(f)setSelectedImage(f)});
+      dom.removeImageBtn.addEventListener("click",clearSelectedImage);
+      dom.inputBox.addEventListener("input",autoResizeTextarea);
+      dom.inputBox.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!isSending)sendMessage()}});
+      dom.sendBtn.addEventListener("click",()=>{if(isSending){if(abortController)abortController.abort()}else sendMessage()});
+      dom.inputBox.addEventListener("paste",e=>{
+        const items=(e.clipboardData||window.clipboardData)?.items||[];
+        for(const item of items){if(item.kind==="file"&&item.type.startsWith("image/")){const f=item.getAsFile();if(f){setSelectedImage(f);e.preventDefault();return}}}
+      });
+      dom.messages.addEventListener("scroll",()=>{const{scrollTop,scrollHeight,clientHeight}=dom.messages;isUserScrolling=scrollHeight-scrollTop-clientHeight>15});
+      if(dom.modeSelector){dom.modeSelector.addEventListener("click",e=>{
+        const o=e.target.closest(".mode-option");if(!o)return;const m=o.dataset.mode;if(!m)return;
+        currentMode=m;dom.modeSelector.querySelectorAll(".mode-option").forEach(el=>el.classList.remove("active"));o.classList.add("active");
+      })}
+      // Mobile sidebar
+      if(dom.menuBtn)dom.menuBtn.addEventListener("click",openMobileSidebar);
+      if(dom.sidebarBackdrop)dom.sidebarBackdrop.addEventListener("click",closeMobileSidebar);
+      if(dom.mobileNewChatBtn)dom.mobileNewChatBtn.addEventListener("click",()=>{closeMobileSidebar();switchChat(createChat())});
+    }
+    function openMobileSidebar(){if(dom.sidebar)dom.sidebar.classList.add("open");if(dom.sidebarBackdrop)dom.sidebarBackdrop.classList.add("open")}
+    function closeMobileSidebar(){if(dom.sidebar)dom.sidebar.classList.remove("open");if(dom.sidebarBackdrop)dom.sidebarBackdrop.classList.remove("open")}
+
+    function loadChats(){try{const r=localStorage.getItem(STORE_KEYS.chats);const p=r?JSON.parse(r):{};if(p&&typeof p==="object")return p}catch{}return{}}
+    function persistChats(){localStorage.setItem(STORE_KEYS.chats,JSON.stringify(chats));if(currentChatId)localStorage.setItem(STORE_KEYS.currentChatId,currentChatId)}
+    function nowTs(){return Date.now()}
+    function createChat(){
+      const id="chat_"+nowTs()+"_"+Math.random().toString(36).slice(2,8);
+      chats[id]={id,title:"新对话",createdAt:nowTs(),updatedAt:nowTs(),messages:[]};persistChats();return id;
+    }
+    function switchChat(cid){if(!chats[cid])return;currentChatId=cid;persistChats();renderChatList();renderCurrentChat();closeMobileSidebar()}
+    function deleteChat(cid){
+      if(!chats[cid])return;if(!confirm(`删除「${chats[cid].title}」？`))return;
+      delete chats[cid];const ids=sortChatIds();if(!chats[currentChatId])currentChatId=ids[0]||null;
+      if(!currentChatId)currentChatId=createChat();persistChats();renderChatList();renderCurrentChat();
+    }
+    function renameChat(cid){
+      if(!chats[cid])return;const n=prompt("新标题：",chats[cid].title||"新对话");
+      if(n===null)return;const t=n.trim();if(!t)return;
+      chats[cid].title=t;chats[cid].updatedAt=nowTs();persistChats();renderChatList();if(cid===currentChatId)updateTopbar();
+    }
+    function sortChatIds(){return Object.keys(chats).sort((a,b)=>(chats[b]?.updatedAt||0)-(chats[a]?.updatedAt||0))}
+    function getCurrentChat(){return chats[currentChatId]}
+    function touchChat(cid){if(chats[cid])chats[cid].updatedAt=nowTs()}
+    function addMessage(cid,msg){if(!chats[cid])return;chats[cid].messages.push(msg);touchChat(cid);persistChats()}
+    function updateAssistantRaw(cid,mid,raw,streaming){
+      const c=chats[cid];if(!c)return;const msg=c.messages.find(m=>m.id===mid);if(!msg)return;
+      let sm;const re=/\n?\[\[TRINITAS_STATS:(.*?)\]\]\n?/g;
+      while((sm=re.exec(raw))!==null){try{msg.stats=JSON.parse(sm[1])}catch{}}
+      msg.raw=raw.replace(/\n?\[\[TRINITAS_STATS:.*?\]\]\n?/g,"").replace(/\n?\[\[TOKEN_STATS:.*?\]\]\n?/g,"");
+      msg.streaming=!!streaming;touchChat(cid);persistChats();
+    }
+    function finalizeAssistantMessage(cid,mid){
+      const c=chats[cid];if(!c)return;const msg=c.messages.find(m=>m.id===mid);if(!msg)return;
+      msg.streaming=false;touchChat(cid);persistChats();
+    }
+
+    function renderChatList(){
+      const ids=sortChatIds();dom.chatList.innerHTML="";
+      if(ids.length===0){dom.chatList.innerHTML=`<div style="text-align:center;color:var(--muted);padding:16px;font-size:13px">暂无会话</div>`;return}
+      for(const id of ids){
+        const ch=chats[id],item=document.createElement("div");
+        item.className="chat-item"+(id===currentChatId?" active":"");item.dataset.chatId=id;
+        const main=document.createElement("div");main.className="chat-item-main";
+        const t=document.createElement("div");t.className="chat-item-title";t.textContent=ch.title||"新对话";
+        const mt=document.createElement("div");mt.className="chat-item-meta";
+        mt.textContent=`${(ch.messages||[]).length} 条 · ${formatTime(ch.updatedAt)}`;
+        main.appendChild(t);main.appendChild(mt);
+        const acts=document.createElement("div");acts.className="chat-item-actions";
+        const rb=document.createElement("button");rb.className="icon-btn";rb.title="重命名";rb.textContent="✎";
+        rb.addEventListener("click",e=>{e.stopPropagation();renameChat(id)});
+        const db=document.createElement("button");db.className="icon-btn danger";db.title="删除";db.textContent="✕";
+        db.addEventListener("click",e=>{e.stopPropagation();deleteChat(id)});
+        acts.appendChild(rb);acts.appendChild(db);
+        item.appendChild(main);item.appendChild(acts);
+        item.addEventListener("click",()=>switchChat(id));dom.chatList.appendChild(item);
+      }
+    }
+    function updateTopbar(){
+      const ch=getCurrentChat();dom.topbarTitle.textContent=ch?.title||"Trinitas";
+      dom.topbarSub.textContent=selectedImageFile?"已选图片 · 视觉链路":"本地多模型网关";
+    }
+    function renderCurrentChat(){
+      updateTopbar();const ch=getCurrentChat();dom.messages.innerHTML="";
+      if(!ch||!Array.isArray(ch.messages)||ch.messages.length===0){
+        dom.messages.innerHTML=`<div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 32 32" style="margin-bottom:16px;opacity:.4">
+            <defs><linearGradient id="elg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5b9cff"/><stop offset="100%" stop-color="#aecbfa"/></linearGradient></defs>
+            <path d="M16 6L28 26H4Z" fill="none" stroke="url(#elg)" stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="16" cy="6" r="2.5" fill="url(#elg)"/><circle cx="28" cy="26" r="2.5" fill="url(#elg)"/><circle cx="4" cy="26" r="2.5" fill="url(#elg)"/>
+          </svg>
+          <div class="empty-greeting">你好，需要我做些什么？</div>
+          <div class="empty-sub">输入问题或上传图片开始对话</div></div>`;return;
+      }
+      for(const msg of ch.messages)dom.messages.appendChild(renderMessageRow(msg));
+      scrollToBottom(true);
+    }
+    function renderMessageRow(msg){
+      const row=document.createElement("div");row.className="msg-row "+(msg.role==="user"?"user":"assistant");row.id="msg-row-"+msg.id;
+      const bubble=document.createElement("div");bubble.className="msg-bubble";
+      if(msg.role==="user"){
+        const w=document.createElement("div");w.className="msg-user-content";
+        if(msg.hasImage){const tg=document.createElement("div");tg.className="msg-user-image-tag";tg.textContent="🖼 已附带图片";w.appendChild(tg)}
+        const tn=document.createElement("div");tn.textContent=msg.content||"";w.appendChild(tn);bubble.appendChild(w);
+      }else{bubble.appendChild(renderAssistantCard(msg))}
+      row.appendChild(bubble);return row;
+    }
+
+    function updateSingleMessageUI(msgId,isForced=false){
+      const now=Date.now();
+      if(!isForced&&now-renderState.lastRenderTime<renderState.THROTTLE_MS){
+        if(!renderState.timeoutId)renderState.timeoutId=setTimeout(()=>{renderState.timeoutId=null;updateSingleMessageUI(msgId,true)},renderState.THROTTLE_MS);return;
+      }
+      renderState.lastRenderTime=now;if(renderState.timeoutId){clearTimeout(renderState.timeoutId);renderState.timeoutId=null}
+      const chat=chats[currentChatId];if(!chat)return;const msg=chat.messages.find(m=>m.id===msgId);if(!msg)return;
+      const row=document.getElementById("msg-row-"+msg.id);if(!row){renderCurrentChat();return}
+      const bubble=row.querySelector(".msg-bubble");
+      const existingCard=bubble.querySelector(".assistant-card");
+      if(existingCard&&msg.streaming){
+        const parsed=parsePhaseStream(msg.raw||msg.content||"");
+        const finalText=parsed.finalText.trim()||(parsed.noPhaseText.trim()&&!parsed.hasFinalPhase?parsed.noPhaseText.trim():"");
+        const thinkBody=existingCard.querySelector(".assistant-think-body");
+        if(thinkBody)updateThinkingPhases(thinkBody,parsed,msg.streaming);
+        const fc=existingCard.querySelector(".assistant-final-content");
+        if(fc){fc.innerHTML=finalText?renderRichText(cleanInternalTags(finalText)):`<p style="color:var(--muted)">等待输出…</p>`}
+        updateContextBadge(existingCard);scrollToBottom();return;
+      }
+      const cr=bubble.getBoundingClientRect();if(cr.height>0)bubble.style.minHeight=cr.height+"px";
+      const oldD=bubble.querySelectorAll("details"),oldS=Array.from(oldD).map(d=>d.open);
+      if(!msg.streaming)stopThinkingTimer(msgId);
+      const nc=renderAssistantCard(msg);
+      const newD=nc.querySelectorAll("details");newD.forEach((d,i)=>{if(oldS[i]!==undefined)d.open=oldS[i]});
+      bubble.replaceChildren(nc);
+      requestAnimationFrame(()=>{bubble.style.minHeight="";scrollToBottom()});
+    }
+
+    function updateThinkingPhases(thinkBody,parsed,isStreaming){
+      const vp=parsed.phaseOrder.filter(p=>!FINAL_PHASES.has(p));
+      const ap=isStreaming?getLastPhase(parsed.phaseOrder.filter(Boolean)):null;
+      const ec=thinkBody.querySelectorAll(".phase-card");
+      ec.forEach((card,i)=>{
+        const pn=vp[i];if(!pn)return;
+        const ct=card.querySelector(".phase-content");if(ct)ct.textContent=(parsed.phaseContents[pn]||"").trim()||"（无输出）";
+        const st=card.querySelector(".phase-status");if(st)st.textContent=(isStreaming&&ap===pn)?"进行中…":"完成";
+        if(isStreaming&&ap===pn)card.classList.add("active");else card.classList.remove("active");
+      });
+      for(let i=ec.length;i<vp.length;i++){
+        const pn=vp[i],pc=document.createElement("div");
+        pc.className="phase-card"+(isStreaming&&ap===pn?" active":"");
+        pc.innerHTML=`<div class="phase-head"><div class="phase-name"><div class="phase-dot"></div><div>${PHASE_LABELS[pn]||pn}</div></div><div class="phase-status">${isStreaming&&ap===pn?"进行中…":"完成"}</div></div><div class="phase-content">${escapeHtml((parsed.phaseContents[pn]||"").trim()||"（无输出）")}</div>`;
+        thinkBody.appendChild(pc);
+      }
+      if(vp.length>0){const wc=thinkBody.querySelector(".phase-card.active");if(wc){const lb=wc.querySelector(".phase-name > div:last-child");if(lb&&lb.textContent==="等待阶段信号")wc.remove()}}
+    }
+    function updateContextBadge(card){
+      const sb=card.querySelector(".assistant-stats");if(!sb)return;
+      let cb=sb.querySelector(".stat-badge.context");
+      const cu=calculateContextUsed(),cr=MAX_CONTEXT_TOKENS-cu,cp=Math.round((cu/MAX_CONTEXT_TOKENS)*100);
+      if(cb){cb.className="stat-badge context"+(cp>=80?" warning":"");cb.innerHTML=`<span class="stat-value">${cu.toLocaleString()}/${MAX_CONTEXT_TOKENS.toLocaleString()}</span> 上下文 (剩余 ${cr.toLocaleString()})`}
+    }
+
+    function renderAssistantCard(msg){
+      const card=document.createElement("div");card.className="assistant-card";
+      const parsed=parsePhaseStream(msg.raw||msg.content||"");
+      const hasTP=parsed.phaseOrder.some(p=>!FINAL_PHASES.has(p));
+      const finalText=parsed.finalText.trim()||(parsed.noPhaseText.trim()&&!parsed.hasFinalPhase?parsed.noPhaseText.trim():"");
+
+      if(hasTP||msg.streaming){
+        const det=document.createElement("details");det.className="assistant-think";if(msg.streaming)det.open=true;
+        const sum=document.createElement("summary");
+        const left=document.createElement("div");left.className="assistant-think-left";
+        const sp=document.createElement("div");sp.className=msg.streaming?"spinner":"spinner stopped";
+        const ti=document.createElement("div");ti.className="assistant-think-title";
+        ti.innerHTML=msg.streaming?`<span class="dots">思考中</span>`:"思考完成";
+        left.appendChild(sp);left.appendChild(ti);
+        const meta=document.createElement("div");meta.className="assistant-think-meta";
+        const sc=parsed.phaseOrder.filter(p=>!FINAL_PHASES.has(p)).length;
+        meta.textContent=sc>0?`${sc} 个阶段`:(msg.streaming?"等待阶段信号":"无阶段信息");
+        sum.appendChild(left);sum.appendChild(meta);det.appendChild(sum);
+        const body=document.createElement("div");body.className="assistant-think-body";
+        const vtp=parsed.phaseOrder.filter(p=>!FINAL_PHASES.has(p));
+        const aph=msg.streaming?getLastPhase(parsed.phaseOrder.filter(Boolean)):null;
+        for(const pn of vtp){
+          const pc=document.createElement("div");pc.className="phase-card"+(msg.streaming&&aph===pn?" active":"");
+          pc.innerHTML=`<div class="phase-head"><div class="phase-name"><div class="phase-dot"></div><div>${PHASE_LABELS[pn]||pn}</div></div><div class="phase-status">${msg.streaming&&aph===pn?"进行中…":"完成"}</div></div><div class="phase-content">${escapeHtml((parsed.phaseContents[pn]||"").trim()||"（无输出）")}</div>`;
+          body.appendChild(pc);
+        }
+        if(msg.streaming&&vtp.length===0){
+          const pc=document.createElement("div");pc.className="phase-card active";
+          pc.innerHTML=`<div class="phase-head"><div class="phase-name"><div class="phase-dot"></div><div>等待阶段信号</div></div><div class="phase-status">进行中…</div></div><div class="phase-content">后端正在初始化…</div>`;
+          body.appendChild(pc);
+        }
+        det.appendChild(body);card.appendChild(det);
+      }
+
+      const fw=document.createElement("div");fw.className="assistant-final";
+      const ft=document.createElement("div");ft.className="assistant-final-title";
+      ft.innerHTML=msg.streaming?`<span class="spinner"></span><span class="dots">生成中</span>`:"";
+      const fc=document.createElement("div");fc.className="assistant-final-content";
+      if(finalText)fc.innerHTML=renderRichText(cleanInternalTags(finalText));
+      else if(msg.streaming)fc.innerHTML=`<p style="color:var(--muted)">等待输出…</p>`;
+      else{const fb=(msg.raw||msg.content||"").trim();fc.innerHTML=fb?renderRichText(cleanInternalTags(fb)):`<p style="color:var(--muted)">（无输出）</p>`}
+      fw.appendChild(ft);fw.appendChild(fc);card.appendChild(fw);
+
+      const sb=document.createElement("div");sb.className="assistant-stats";sb.id="stats-bar-"+msg.id;
+      if(msg.streaming){
+        const tb=document.createElement("span");tb.className="stat-badge time";tb.id="thinking-timer-"+msg.id;
+        const el=((Date.now()-(msg.streamStartTs||msg.ts))/1000);
+        tb.innerHTML=`⏱ 思考中 <span class="stat-value thinking-timer">${formatElapsed(el)}</span>`;
+        sb.appendChild(tb);startThinkingTimer(msg.id,msg.streamStartTs||msg.ts);
+      }else if(msg.stats){
+        const s=msg.stats;
+        if(s.total_time_s){const b=document.createElement("span");b.className="stat-badge time";b.innerHTML=`✓ <span class="stat-value">${formatElapsed(s.total_time_s)}</span>`;sb.appendChild(b)}
+        if(s.phase_times){for(const[ph,dur]of Object.entries(s.phase_times)){const b=document.createElement("span");b.className="stat-badge";b.innerHTML=`${ph} <span class="stat-value">${formatElapsed(dur)}</span>`;sb.appendChild(b)}}
+        if(s.total_tokens){const b=document.createElement("span");b.className="stat-badge";b.innerHTML=`Token <span class="stat-value">${s.total_tokens.toLocaleString()}</span>`;sb.appendChild(b)}
+        if(s.avg_speed_tps){const b=document.createElement("span");b.className="stat-badge speed";b.innerHTML=`⚡ <span class="stat-value">${s.avg_speed_tps} t/s</span>`;sb.appendChild(b)}
+      }
+      const cu=calculateContextUsed(),cr=MAX_CONTEXT_TOKENS-cu,cp=Math.round((cu/MAX_CONTEXT_TOKENS)*100);
+      const cb=document.createElement("span");cb.className="stat-badge context"+(cp>=80?" warning":"");
+      cb.innerHTML=`<span class="stat-value">${cu.toLocaleString()}/${MAX_CONTEXT_TOKENS.toLocaleString()}</span> 上下文 (剩余 ${cr.toLocaleString()})`;
+      sb.appendChild(cb);if(sb.childNodes.length>0)card.appendChild(sb);
+
+      const me=document.createElement("div");me.className="assistant-meta";
+      const lm=document.createElement("div");lm.textContent=formatTime(msg.ts);
+      const rm=document.createElement("div");
+      if(msg.streaming)rm.innerHTML=`<span class="assistant-streaming"><span class="spinner"></span>流式接收中</span>`;
+      else rm.textContent=parsed.hasFinalPhase?"完成":"输出";
+      me.appendChild(lm);me.appendChild(rm);card.appendChild(me);
+      return card;
+    }
+
+    function parsePhaseStream(raw){
+      const text=raw||"",regex=/\[\[PHASE:([A-Z0-9_]+)\]\]/g;
+      let match,lastIndex=0,currentPhase=null;const phaseOrder=[],phaseContents={};let noPhaseText="";
+      while((match=regex.exec(text))!==null){
+        const before=text.slice(lastIndex,match.index);
+        if(before){if(currentPhase)phaseContents[currentPhase]=(phaseContents[currentPhase]||"")+before;else noPhaseText+=before}
+        const pn=match[1];currentPhase=pn;if(!phaseOrder.includes(pn))phaseOrder.push(pn);lastIndex=regex.lastIndex;
+      }
+      const tail=text.slice(lastIndex);if(tail){if(currentPhase)phaseContents[currentPhase]=(phaseContents[currentPhase]||"")+tail;else noPhaseText+=tail}
+      let finalText="",hasFinalPhase=false;
+      for(const p of phaseOrder){if(FINAL_PHASES.has(p)){hasFinalPhase=true;finalText+=(phaseContents[p]||"")}}
+      return{phaseOrder,phaseContents,noPhaseText,finalText,hasFinalPhase};
+    }
+    function getLastPhase(list){return(!list||list.length===0)?null:list[list.length-1]}
+    function escapeHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+
+    function cleanInternalTags(text){
+      return text
+        .replace(/^\s*\[TaskPack\].*$/gm,"").replace(/^\s*RISK\s*=\s*L\d.*$/gm,"")
+        .replace(/\[\/?(VisionPack|TaskPack)\]/g,"")
+        .replace(/^\s*\[(上下文背景?|用户(当前)?问题|回答规则|你的角色)\].*$/gm,"")
+        .replace(/^\s*(Confidence|Verdict|Issues|Minimal_Fix)\s*[:：].*$/gm,"")
+        .replace(/^\s*(Problem|Given|Goal|Constraints|Ambiguities|What_to_verify):.*$/gm,"")
+        .replace(/\n{3,}/g,"\n\n").trim();
+    }
+
+    function renderRichText(input){
+      let s=String(input||"");s=s.replace(/\r\n/g,"\n");s=escapeHtml(s);
+      const codeBlocks=[];
+      s=s.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g,(_,lang,code)=>{const i=codeBlocks.length;codeBlocks.push({lang:lang||"",code:code||""});return`@@CB_${i}@@`});
+      s=s.replace(/^### (.+)$/gm,'<h3>$1</h3>');s=s.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+      s=s.replace(/`([^`\n]+)`/g,'<code class="inline-code">$1</code>');
+      s=s.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+      s=s.replace(/^- (.+)$/gm,'<li style="margin-left:16px;list-style:disc">$1</li>');
+      s=s.replace(/(<li[^>]*>.*<\/li>\n?)+/g,m=>`<ul style="margin:8px 0;padding-left:8px">${m}</ul>`);
+      s=s.replace(/^\d+\.\s+(.+)$/gm,'<li style="margin-left:16px">$1</li>');
+      const paras=s.split(/\n{2,}/).map(p=>p.replace(/\n/g,"<br>"));
+      s=paras.map(p=>{const t=p.trim();if(t.startsWith("<h2")||t.startsWith("<h3")||t.startsWith("<ul")||t.startsWith("<li"))return t;return`<p>${t}</p>`}).join("");
+      s=s.replace(/@@CB_(\d+)@@/g,(_,i)=>{
+        const b=codeBlocks[Number(i)],code=(b?.code||"").replace(/^\n+|\n+$/g,"");
+        const lang=b?.lang?`<div style="color:var(--muted);font-size:11px;padding:4px 14px 0;background:var(--surface);border-radius:12px 12px 0 0;border:1px solid var(--line);border-bottom:none">${b.lang}</div>`:"";
+        return`${lang}<pre style="margin:0 0 12px;${lang?"border-radius:0 0 12px 12px;":""}"><code>${code}</code></pre>`;
+      });
+      return s;
+    }
+
+    async function onVerifyApiKey(){
+      const key=dom.apiKeyInput.value.trim();if(!key){setVerifyStatus("密钥不能为空","error");return}
+      setVerifyStatus("验证中…","");
+      try{const r=await fetch("/api/verify",{method:"POST",headers:{"X-TRINITAS-KEY":key}});
+        if(r.ok){localStorage.setItem(STORE_KEYS.apiKey,key);setVerifyStatus("验证成功 ✓","success")}
+        else setVerifyStatus("密钥错误","error")}
+      catch(e){setVerifyStatus("连接失败","error")}
+    }
+    function setVerifyStatus(t,c){dom.verifyStatus.textContent=t;dom.verifyStatus.className="verify-status"+(c?" "+c:"")}
+
+    function setSelectedImage(file){
+      if(!file||!file.type?.startsWith("image/"))return;selectedImageFile=file;
+      const r=new FileReader();r.onload=e=>{dom.imagePreview.src=e.target.result;dom.imagePreviewName.textContent=file.name||"image";dom.imagePreviewBar.style.display="block";updateTopbar()};
+      r.readAsDataURL(file);
+    }
+    function clearSelectedImage(){selectedImageFile=null;dom.fileInput.value="";dom.imagePreview.src="";dom.imagePreviewName.textContent="";dom.imagePreviewBar.style.display="none";updateTopbar()}
+
+    async function sendMessage(){
+      if(isSending)return;const key=(localStorage.getItem(STORE_KEYS.apiKey)||"").trim();
+      if(!key){alert("请先验证密钥");return}
+      let chat=getCurrentChat();if(!chat){switchChat(createChat());chat=getCurrentChat()}
+      const text=dom.inputBox.value.trim();if(!text&&!selectedImageFile)return;
+      if(chat.messages.length===0&&(chat.title==="新对话"||!chat.title)){const b=text||(selectedImageFile?"图片识别":"新对话");chat.title=b.length>18?b.slice(0,18)+"…":b}
+      const userMsg={id:"msg_u_"+nowTs()+"_"+Math.random().toString(36).slice(2,6),role:"user",content:text||"",hasImage:!!selectedImageFile,ts:nowTs()};
+      addMessage(currentChatId,userMsg);
+      const aMsgId="msg_a_"+nowTs()+"_"+Math.random().toString(36).slice(2,6);
+      addMessage(currentChatId,{id:aMsgId,role:"assistant",raw:"",streaming:true,ts:nowTs(),streamStartTs:nowTs(),stats:null});
+      abortController=new AbortController();let rTid=null;
+      if(REQUEST_TIMEOUT_MS>0)rTid=setTimeout(()=>{try{abortController.abort("request-timeout")}catch{}},REQUEST_TIMEOUT_MS);
+      const sentText=text;dom.inputBox.value="";autoResizeTextarea();isSending=true;
+      dom.sendBtn.innerHTML="⏹";dom.sendBtn.title="停止";dom.sendBtn.classList.add("stop-btn");
+      dom.topbarRight.textContent="发送中…";renderChatList();renderCurrentChat();scrollToBottom(true);
+      const cApi=currentChatId;let endpoint="/api/chat",fetchOpts;
+      if(selectedImageFile){
+        endpoint="/api/vision";const form=new FormData();form.append("file",selectedImageFile);form.append("chat_id",cApi);form.append("message",sentText||"");form.append("mode",currentMode);
+        fetchOpts={method:"POST",headers:{"X-TRINITAS-KEY":key},body:form,signal:abortController.signal};
+      }else{
+        fetchOpts={method:"POST",headers:{"Content-Type":"application/json","X-TRINITAS-KEY":key},body:JSON.stringify({message:sentText,chat_id:cApi,mode:currentMode}),signal:abortController.signal};
+      }
+      if(selectedImageFile)clearSelectedImage();let raw="";
+      try{
+        const res=await fetch(endpoint,fetchOpts);
+        if(res.status===401){updateAssistantRaw(cApi,aMsgId,"[鉴权失败] 密钥错误",false);finalizeAssistantMessage(cApi,aMsgId);updateSingleMessageUI(aMsgId,true);dom.topbarRight.textContent="鉴权失败";return}
+        if(!res.ok){let et="";try{et=await res.text()}catch{}updateAssistantRaw(cApi,aMsgId,`[请求失败] HTTP ${res.status}\n${et}`,false);finalizeAssistantMessage(cApi,aMsgId);updateSingleMessageUI(aMsgId,true);dom.topbarRight.textContent="请求失败";return}
+        if(!res.body){updateAssistantRaw(cApi,aMsgId,"[无响应体]",false);finalizeAssistantMessage(cApi,aMsgId);updateSingleMessageUI(aMsgId,true);return}
+        const reader=res.body.getReader(),decoder=new TextDecoder("utf-8");
+        while(true){
+          const{done,value}=await readWithTimeout(reader,STREAM_IDLE_TIMEOUT_MS);if(done)break;
+          const chunk=decoder.decode(value,{stream:true});raw+=chunk;
+          const vr=raw.replace(INVISIBLE_HEARTBEAT_RE,"").replace(TOKEN_STATS_RE,"").replace(TRINITAS_STATS_RE,"");
+          if(vr===(getAssistantRaw(cApi,aMsgId)||"")){dom.topbarRight.textContent="接收中…";continue}
+          updateAssistantRaw(cApi,aMsgId,vr,true);
+          if(currentChatId===cApi)updateSingleMessageUI(aMsgId);dom.topbarRight.textContent="接收中…";
+        }
+        extractAndSetStats(cApi,aMsgId,raw);finalizeAssistantMessage(cApi,aMsgId);
+        if(currentChatId===cApi)updateSingleMessageUI(aMsgId,true);dom.topbarRight.textContent="完成";
+      }catch(e){
+        if(e.name==="AbortError"){const reason=abortController?.signal?.reason;
+          if(reason==="request-timeout"){updateAssistantRaw(cApi,aMsgId,raw.replace(INVISIBLE_HEARTBEAT_RE,"")+"\n\n[超时]",false);dom.topbarRight.textContent="超时"}
+          else{updateAssistantRaw(cApi,aMsgId,raw.replace(INVISIBLE_HEARTBEAT_RE,"")+"\n\n[已停止]",false);dom.topbarRight.textContent="已停止"}
+        }else{updateAssistantRaw(cApi,aMsgId,raw.replace(INVISIBLE_HEARTBEAT_RE,"")+`\n\n[网络异常] ${e?.message||e}`,false);dom.topbarRight.textContent="异常"}
+        finalizeAssistantMessage(cApi,aMsgId);if(currentChatId===cApi)updateSingleMessageUI(aMsgId,true);
+      }finally{
+        if(rTid)clearTimeout(rTid);isSending=false;abortController=null;stopThinkingTimer(aMsgId);
+        dom.sendBtn.innerHTML="➤";dom.sendBtn.title="发送";dom.sendBtn.classList.remove("stop-btn");
+        persistChats();renderChatList();
+      }
+    }
+
+    function autoResizeTextarea(){const ta=dom.inputBox;ta.style.height="0px";ta.style.height=Math.min(ta.scrollHeight,200)+"px"}
+    function formatTime(ts){if(!ts)return"";const d=new Date(ts);return`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`}
+    function formatElapsed(s){s=Math.max(0,Number(s)||0);if(s<60)return s.toFixed(1)+"s";return`${Math.floor(s/60)}m${(s%60).toFixed(0)}s`}
+    function startThinkingTimer(mid,startTs){if(activeTimers[mid])clearInterval(activeTimers[mid]);activeTimers[mid]=setInterval(()=>{const el=document.getElementById("thinking-timer-"+mid);if(!el){stopThinkingTimer(mid);return}const v=el.querySelector(".thinking-timer");if(v)v.textContent=formatElapsed((Date.now()-startTs)/1000)},100)}
+    function stopThinkingTimer(mid){if(activeTimers[mid]){clearInterval(activeTimers[mid]);delete activeTimers[mid]}}
+    function calculateContextUsed(){const ch=getCurrentChat();if(!ch||!Array.isArray(ch.messages))return 0;let t=0;for(const m of ch.messages){if(m.role==="user"){t+=(m.content||"").length;if(m.hasImage)t+=500}else t+=(m.raw||m.content||"").length}return Math.round(t/2)}
+    function scrollToBottom(force=false){if(!isUserScrolling||force)dom.messages.scrollTop=dom.messages.scrollHeight}
+    async function readWithTimeout(reader,timeoutMs){let tid=null;try{return await Promise.race([reader.read(),new Promise((_,rej)=>{tid=setTimeout(()=>rej(new Error("stream idle timeout")),timeoutMs)})])}finally{if(tid)clearTimeout(tid)}}
+    function getAssistantRaw(cid,mid){const c=chats[cid];if(!c)return"";const m=c.messages.find(m=>m.id===mid);return m?.raw||""}
+    function extractAndSetStats(cid,mid,rawData){
+      const c=chats[cid];if(!c)return;const msg=c.messages.find(m=>m.id===mid);if(!msg)return;
+      const re=/\[\[TRINITAS_STATS:(.*?)\]\]/g;let sm;
+      while((sm=re.exec(rawData))!==null){try{msg.stats=JSON.parse(sm[1])}catch{}}
+      if(!msg.stats&&msg.streamStartTs){const el=(Date.now()-msg.streamStartTs)/1000;msg.stats={total_time_s:Math.round(el*10)/10,phase_times:{},total_tokens:0,total_prompt_tokens:0,total_eval_tokens:0,avg_speed_tps:0}}
+      persistChats();
+    }
+  </script>
+</body>
+</html>
