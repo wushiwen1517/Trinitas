@@ -29,9 +29,16 @@ _INTERNAL_TAG_RE = _re.compile(
     r"\[TaskPack\].*?$|^RISK\s*=\s*L\d.*?$|\[/?VisionPack\]|"
     r"^\s*\[(上下文背景?|用户(当前)?问题|回答规则|你的角色)\].*?$|"
     r"^\s*(Confidence|Verdict|Issues|Minimal_Fix)\s*[:：].*?$|"
-    r"^\s*(Problem|Given|Goal|Constraints|Ambiguities|What_to_verify):.*?$|"
-    r"<thinking>[\s\S]*?</thinking>",
+    r"^\s*(Problem|Given|Goal|Constraints|Ambiguities|What_to_verify):.*?$",
     _re.MULTILINE | _re.IGNORECASE
+)
+# thinking 标签单独处理，支持不闭合/嵌套/格式不标准
+_THINKING_RE = _re.compile(
+    r"<thinking>[\s\S]*?</thinking>|"       # 标准闭合
+    r"<thinking>[\s\S]*$|"                  # 未闭合（到文末）
+    r"<think>[\s\S]*?</think>|"             # 变体标签
+    r"<think>[\s\S]*$",                     # 变体未闭合
+    _re.IGNORECASE
 )
 
 # ==========================================
@@ -137,7 +144,8 @@ class Orchestrator:
 
     @staticmethod
     def _clean_final_answer(text):
-        cleaned = _INTERNAL_TAG_RE.sub("", text)
+        cleaned = _THINKING_RE.sub("", text)
+        cleaned = _INTERNAL_TAG_RE.sub("", cleaned)
         return _re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
     async def _build_context(self, chat_id):
@@ -242,13 +250,15 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
                 except Exception as e: raise e
             else: yield True, hb
 
-    async def _collect_stream(self, engine, prompt, all_stats, system=None):
-        """收集流式输出为完整文本（内部缓冲，不 yield chunk）"""
+    async def _collect_with_heartbeat(self, engine, prompt, all_stats, system=None):
+        """收集流式输出为完整文本（内部缓冲），同时 yield 心跳防超时"""
         buf = ""
         async for is_hb, chunk in self._with_heartbeat(engine.execute(prompt=prompt, system=system)):
-            if not is_hb:
+            if is_hb:
+                yield chunk  # 心跳透传给前端，防止连接断开
+            else:
                 c, s = self._strip_token_stats(chunk); all_stats.extend(s); buf += c
-        return buf
+        self._last_collected = buf  # 通过实例变量传回结果
 
     def _build_stats(self, t0, timings, stats):
         elapsed = round(_time.monotonic() - t0, 2)
@@ -260,15 +270,49 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
                 "avg_speed_tps": m.get("avg_tokens_per_second", 0)}
 
     def _parse_json_review(self, raw):
-        """从审查文本中提取 JSON"""
+        """从审查文本中提取 JSON，多重容错"""
+        if not raw or not raw.strip():
+            return None
+
+        # 尝试1: ```json ... ``` 代码块
         m = _re.search(r"```json\s*([\s\S]*?)```", raw)
         if m:
             try: return _json.loads(m.group(1))
             except: pass
+
+        # 尝试2: ``` ... ``` 无语言标注
+        m = _re.search(r"```\s*([\s\S]*?)```", raw)
+        if m:
+            try: return _json.loads(m.group(1))
+            except: pass
+
+        # 尝试3: 裸 { ... } 块
         m = _re.search(r"\{[\s\S]*\}", raw)
         if m:
             try: return _json.loads(m.group(0))
             except: pass
+
+        # 尝试4: 修复常见 JSON 错误（中文引号、尾逗号）再解析
+        if "{" in raw:
+            fixed = raw[raw.index("{"):raw.rindex("}") + 1] if "}" in raw else ""
+            if fixed:
+                fixed = fixed.replace("\u201c", '"').replace("\u201d", '"')  # 中文引号
+                fixed = fixed.replace("\u2018", "'").replace("\u2019", "'")
+                fixed = _re.sub(r",\s*([}\]])", r"\1", fixed)  # 尾逗号
+                try: return _json.loads(fixed)
+                except: pass
+
+        # 尝试5: 从文本中提取 verdict（回退到非 JSON 解析）
+        verdict = "PASS"
+        if "FAIL" in raw.upper():
+            verdict = "FAIL"
+        issues = []
+        for line in raw.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("- ") and len(stripped) > 4:
+                issues.append(stripped[2:])
+        if verdict == "FAIL" or issues:
+            return {"verdict": verdict, "issues": issues, "fix": "", "confidence": 0.4 if verdict == "FAIL" else 0.7}
         return None
 
     # ==========================================
@@ -335,8 +379,11 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
             tp = _time.monotonic()
 
             if need_review:
-                # 审查模式：Alpha 内部缓冲，不流式暴露草稿
-                alpha_draft = await self._collect_stream(self.alpha_engine, alpha_prompt, all_stats, system=ALPHA_SYSTEM)
+                # 审查模式：Alpha 内部缓冲，但心跳透传给前端防超时
+                self._last_collected = ""
+                async for hb_chunk in self._collect_with_heartbeat(self.alpha_engine, alpha_prompt, all_stats, system=ALPHA_SYSTEM):
+                    yield hb_chunk
+                alpha_draft = self._last_collected
                 yield f"Alpha 草稿已生成（{len(alpha_draft)} 字），进入审查...\n"
             else:
                 # Instant 模式：直接流式输出
@@ -355,34 +402,33 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
                 yield f"\n[[TRINITAS_STATS:{_json.dumps(self._build_stats(t0, timings, all_stats))}]]\n"
                 return
 
-            # ===== Beta + Gamma 并行审查 =====
-            yield self._phase("BETA_REVIEW")
-            yield "Beta & Gamma 并行审查中...\n"
+            # ===== Beta 审查（先跑 Beta，Gamma 需要看到 Beta 结果）=====
+            beta_raw = ""
+            if risk.need_beta:
+                yield self._phase("BETA_REVIEW")
+                beta_prompt = self._build_beta_prompt(working_message, alpha_draft)
+                tp_beta = _time.monotonic()
+                self._last_collected = ""
+                async for hb in self._collect_with_heartbeat(self.beta_engine, beta_prompt, all_stats, system=BETA_SYSTEM):
+                    yield hb
+                beta_raw = self._last_collected
+                timings["BETA"] = round(_time.monotonic() - tp_beta, 2)
+                if beta_raw.strip():
+                    yield f"\n{beta_raw.strip()}\n"
 
-            beta_prompt = self._build_beta_prompt(working_message, alpha_draft)
-            gamma_prompt = self._build_gamma_prompt(working_message, alpha_draft, "")
-
-            tp = _time.monotonic()
-            # 并行执行
-            beta_task = asyncio.create_task(self.beta_engine.execute_buffered(prompt=beta_prompt, system=BETA_SYSTEM))
-            gamma_task = asyncio.create_task(self.gamma_engine.execute_buffered(prompt=gamma_prompt, system=GAMMA_SYSTEM))
-
-            # 等待两个都完成，同时发心跳
-            while not (beta_task.done() and gamma_task.done()):
-                done, _ = await asyncio.wait([beta_task, gamma_task], timeout=15.0, return_when=asyncio.FIRST_COMPLETED)
-                if not beta_task.done() or not gamma_task.done():
-                    yield "\u200b"
-
-            beta_raw = beta_task.result() if not beta_task.cancelled() else ""
-            gamma_raw = gamma_task.result() if not gamma_task.cancelled() else ""
-            timings["BETA_GAMMA"] = round(_time.monotonic() - tp, 2)
-
-            # 显示 Beta 审查结果
-            if beta_raw.strip():
-                yield f"\n{beta_raw.strip()}\n"
-            yield self._phase("GAMMA_FINAL_REVIEW")
-            if gamma_raw.strip():
-                yield f"\n{gamma_raw.strip()}\n"
+            # ===== Gamma 终审（能看到 Beta 结果）=====
+            gamma_raw = ""
+            if risk.need_gamma:
+                yield self._phase("GAMMA_FINAL_REVIEW")
+                gamma_prompt = self._build_gamma_prompt(working_message, alpha_draft, beta_raw)
+                tp_gamma = _time.monotonic()
+                self._last_collected = ""
+                async for hb in self._collect_with_heartbeat(self.gamma_engine, gamma_prompt, all_stats, system=GAMMA_SYSTEM):
+                    yield hb
+                gamma_raw = self._last_collected
+                timings["GAMMA"] = round(_time.monotonic() - tp_gamma, 2)
+                if gamma_raw.strip():
+                    yield f"\n{gamma_raw.strip()}\n"
 
             # ===== 解析审查结果 =====
             needs_rewrite = False
