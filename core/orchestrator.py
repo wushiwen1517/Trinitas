@@ -168,15 +168,21 @@ class Orchestrator:
     def _build_alpha_prompt(self, context_text, working_message, risk_level):
         cot = """请先在 <thinking> 标签中完成你的推理过程，然后在 </thinking> 之后给出最终答案。
 <thinking> 中的内容不会展示给用户，你可以自由思考。"""
+        intent_step = """
+【步骤 0：判断用户意图】
+先判断本条消息是否「仅包含打招呼、寒暄、随口一问」而没有任何需要解答的具体问题或任务。
+例如：你好、在吗、你在干嘛、干嘛呢、忙不忙、吃了吗、最近怎么样、在不在、嗨、hello、hi 等，或仅有类似含义的短句。
+- 若是：只需用一两句自然、友好地回应，并邀请用户说出具体需求。不要输出问题诊断、审题清单、替代方案或需求挖掘话术。
+- 若否（用户已提出具体问题、任务或请求）：继续下面的步骤 1。"""
         trap_check = """
-先审题再答题。用以下清单审视问题：
+【步骤 1：先审题再答题】用以下清单审视问题：
 A)事实前提错误 B)违反自然规律 C)概念混淆 D)隐含矛盾 E)条件缺失
 F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
 命中则先指出问题，再给替代方案。"""
         rules = "致命缺陷必须指出。多方案按可行性排列。不确定处标注待验证。"
         if risk_level >= 2:
             rules += " 高复杂度多角度验证。涉及代码给可执行版本。"
-        return f"{cot}\n\n{trap_check}\n\n[上下文]\n{context_text}\n\n[用户问题]\n{working_message}\n\n{rules}"
+        return f"{cot}\n\n{intent_step}\n\n{trap_check}\n\n{rules}\n\n[上下文]\n{context_text}\n\n[用户问题]\n{working_message}\n\n请按步骤 0 判断后，再决定是简短回应还是执行步骤 1 审题并回答。"
 
     def _build_beta_prompt(self, user_question, alpha_answer):
         return f"""{BETA_FEWSHOT}
