@@ -37,9 +37,11 @@ CHECKS: Tuple[IntegrityCheck, ...] = (
         rel_path=r"web\\index.html",
         must_contain=(
             "STREAM_IDLE_TIMEOUT_MS",
-            "modeSelector",
+            "model-dropdown",
+            "modelTrigger",
             "cleanInternalTags",
             "PHASE_LABELS",
+            "total_eval_tokens",
         ),
     ),
 )

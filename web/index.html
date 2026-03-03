@@ -407,17 +407,38 @@
       <div class="topbar">
         <div class="topbar-left">
           <button id="menuBtn" class="mobile-btn" title="菜单">☰</button>
-          <svg width="20" height="20" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="lg2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5b9cff"/><stop offset="100%" stop-color="#aecbfa"/></linearGradient></defs>
-            <path d="M16 6L28 26H4Z" fill="none" stroke="url(#lg2)" stroke-width="2" stroke-linejoin="round"/>
-            <circle cx="16" cy="6" r="2.5" fill="url(#lg2)"/><circle cx="28" cy="26" r="2.5" fill="url(#lg2)"/><circle cx="4" cy="26" r="2.5" fill="url(#lg2)"/>
-          </svg>
-          <span id="topbarTitle" class="topbar-title">Trinitas</span>
+          <div class="model-dropdown" id="modelDropdown">
+            <button type="button" class="model-trigger" id="modelTrigger" aria-haspopup="true" aria-expanded="false">
+              <span class="model-trigger-name">Trinitas</span>
+              <span class="model-trigger-chevron">▼</span>
+            </button>
+            <div class="model-dropdown-panel" id="modelDropdownPanel" role="menu">
+              <div class="model-dropdown-label">模型模式</div>
+              <div class="model-dropdown-option active" data-mode="auto" role="menuitem">
+                <div><div class="option-name">Auto</div><div class="option-desc">自动判断复杂度</div></div>
+                <span class="option-check">✓</span>
+              </div>
+              <div class="model-dropdown-option" data-mode="pro" role="menuitem">
+                <div><div class="option-name">Pro</div><div class="option-desc">多专家联合审查</div></div>
+                <span class="option-check">✓</span>
+              </div>
+              <div class="model-dropdown-option" data-mode="instant" role="menuitem">
+                <div><div class="option-name">Instant</div><div class="option-desc">即刻回答</div></div>
+                <span class="option-check">✓</span>
+              </div>
+            </div>
+          </div>
+          <div class="topbar-title-wrap">
+            <span id="topbarTitle" class="topbar-title">Trinitas</span>
+            <span id="topbarSub" class="topbar-sub">本地多模型网关</span>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:4px">
+        <div class="topbar-right">
           <button id="mobileNewChatBtn" class="mobile-btn" title="新对话">＋</button>
-          <span id="topbarSub" class="topbar-sub">本地多模型网关</span>
-          <span id="topbarRight" class="topbar-sub" style="margin-left:8px"></span>
+          <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span id="topbarRight" class="topbar-sub">就绪</span>
+          </div>
         </div>
       </div>
       <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
@@ -544,13 +565,6 @@
     }
     function openMobileSidebar(){if(dom.sidebar)dom.sidebar.classList.add("open");if(dom.sidebarBackdrop)dom.sidebarBackdrop.classList.add("open")}
     function closeMobileSidebar(){if(dom.sidebar)dom.sidebar.classList.remove("open");if(dom.sidebarBackdrop)dom.sidebarBackdrop.classList.remove("open")}
-    function toggleModelDropdown(){if(dom.modelDropdown)dom.modelDropdown.classList.toggle("open")}
-    function closeModelDropdown(){if(dom.modelDropdown)dom.modelDropdown.classList.remove("open")}
-    function setMode(m){
-      currentMode=m;
-      if(dom.modelDropdownPanel){dom.modelDropdownPanel.querySelectorAll(".model-dropdown-option").forEach(el=>{el.classList.toggle("active",el.dataset.mode===m)});}
-      if(dom.modelTrigger){const nameEl=dom.modelTrigger.querySelector(".model-trigger-name");if(nameEl)nameEl.textContent="Trinitas";}
-    }
 
     function loadChats(){try{const r=localStorage.getItem(STORE_KEYS.chats);const p=r?JSON.parse(r):{};if(p&&typeof p==="object")return p}catch{}return{}}
     function persistChats(){localStorage.setItem(STORE_KEYS.chats,JSON.stringify(chats));if(currentChatId)localStorage.setItem(STORE_KEYS.currentChatId,currentChatId)}
