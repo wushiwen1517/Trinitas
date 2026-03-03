@@ -586,6 +586,22 @@
     function toggleModelDropdown(){if(dom.modelDropdown)dom.modelDropdown.classList.toggle("open")}
     function closeModelDropdown(){if(dom.modelDropdown)dom.modelDropdown.classList.remove("open")}
 
+    function setMode(m){
+      const mode = (String(m || "auto").toLowerCase());
+      if(!["auto","pro","instant"].includes(mode))return;
+      currentMode = mode;
+      const labels = { auto: "Auto", pro: "Pro", instant: "Instant" };
+      const nameEl = dom.modelTrigger && dom.modelTrigger.querySelector(".model-trigger-name");
+      if(nameEl)nameEl.textContent = labels[mode] || mode;
+      const panel = dom.modelDropdownPanel;
+      if(panel){
+        panel.querySelectorAll(".model-dropdown-option").forEach(opt=>{
+          if((opt.dataset.mode||"").toLowerCase()===mode)opt.classList.add("active");
+          else opt.classList.remove("active");
+        });
+      }
+    }
+
     function loadChats(){try{const r=localStorage.getItem(STORE_KEYS.chats);const p=r?JSON.parse(r):{};if(p&&typeof p==="object")return p}catch{}return{}}
     function persistChats(){localStorage.setItem(STORE_KEYS.chats,JSON.stringify(chats));if(currentChatId)localStorage.setItem(STORE_KEYS.currentChatId,currentChatId)}
     function nowTs(){return Date.now()}
@@ -900,7 +916,13 @@
         if(e.name==="AbortError"){const reason=abortController?.signal?.reason;
           if(reason==="request-timeout"){updateAssistantRaw(cApi,aMsgId,raw.replace(INVISIBLE_HEARTBEAT_RE,"")+"\n\n[超时]",false);dom.topbarRight.textContent="超时"}
           else{updateAssistantRaw(cApi,aMsgId,raw.replace(INVISIBLE_HEARTBEAT_RE,"")+"\n\n[已停止]",false);dom.topbarRight.textContent="已停止"}
-        }else{updateAssistantRaw(cApi,aMsgId,raw.replace(INVISIBLE_HEARTBEAT_RE,"")+`\n\n[网络异常] ${e?.message||e}`,false);dom.topbarRight.textContent="异常"}
+        }else{
+          const msg=e?.message||String(e);
+          const isIdleTimeout=msg.indexOf("stream idle timeout")!==-1;
+          const tail=isIdleTimeout?"\n\n[长时间无响应] 可能是模型或服务卡住，已自动停止。请简化问题或稍后重试。":"\n\n[网络异常] "+msg;
+          updateAssistantRaw(cApi,aMsgId,raw.replace(INVISIBLE_HEARTBEAT_RE,"")+tail,false);
+          dom.topbarRight.textContent=isIdleTimeout?"无响应":"异常";
+        }
         finalizeAssistantMessage(cApi,aMsgId);if(currentChatId===cApi)updateSingleMessageUI(aMsgId,true);
       }finally{
         if(rTid)clearTimeout(rTid);isSending=false;abortController=null;stopThinkingTimer(aMsgId);

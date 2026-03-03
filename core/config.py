@@ -72,6 +72,7 @@ GAMMA_CONFIDENCE_THRESHOLD = 0.65
 # =========================
 SHORT_TERM_LIMIT = 12
 LONG_TERM_TRIGGER = 15000
+MAX_LONG_TERM_CHARS = 5000
 
 # =========================
 # 功能开关

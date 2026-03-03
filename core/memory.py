@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from typing import List, Tuple
 
-from core.config import DB_NAME, SHORT_TERM_LIMIT, LONG_TERM_TRIGGER, MODEL_ALPHA
+from core.config import DB_NAME, SHORT_TERM_LIMIT, LONG_TERM_TRIGGER, MAX_LONG_TERM_CHARS, MODEL_ALPHA
 from core.protocol import OllamaStreamExecutor
 
 
@@ -115,6 +115,8 @@ class MemoryManager:
         existing = self.get_long_term_summary(chat_id)
         combine = f"已有长期记忆：\n{existing}\n\n新增历史：\n{old_text}\n\n请合并并重新输出摘要。"
         new_summary = await self._summarize_text(combine)
+        if len(new_summary) > MAX_LONG_TERM_CHARS:
+            new_summary = new_summary[:MAX_LONG_TERM_CHARS]
         await self.update_long_term_summary(chat_id, new_summary)
 
         # 异步删除旧消息
