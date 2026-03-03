@@ -430,7 +430,7 @@
           </div>
           <div class="topbar-title-wrap">
             <span id="topbarTitle" class="topbar-title">Trinitas</span>
-            <span id="topbarSub" class="topbar-sub">本地多模型网关</span>
+            <span id="topbarSub" class="topbar-sub"></span>
           </div>
         </div>
         <div class="topbar-right">
@@ -556,7 +556,7 @@
           opt.addEventListener("click",e=>{e.stopPropagation();const m=opt.dataset.mode;if(!m)return;setMode(m);closeModelDropdown();});
         });
       }
-      document.addEventListener("click",()=>closeModelDropdown());
+      document.addEventListener("click",e=>{if(!dom.modelDropdown||!dom.modelDropdown.contains(e.target))closeModelDropdown();});
       if(dom.modelDropdownPanel)dom.modelDropdownPanel.addEventListener("click",e=>e.stopPropagation());
       // Mobile sidebar
       if(dom.menuBtn)dom.menuBtn.addEventListener("click",openMobileSidebar);
@@ -623,7 +623,7 @@
     }
     function updateTopbar(){
       const ch=getCurrentChat();dom.topbarTitle.textContent=ch?.title||"新对话";
-      dom.topbarSub.textContent=selectedImageFile?"已选图片 · 视觉链路":"本地多模型网关";
+      dom.topbarSub.textContent=selectedImageFile?"已选图片 · 视觉链路":"";
     }
     function renderCurrentChat(){
       updateTopbar();const ch=getCurrentChat();dom.messages.innerHTML="";

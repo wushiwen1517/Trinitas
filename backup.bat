@@ -54,7 +54,7 @@ if errorlevel 1 (
 :done
 echo.
 echo [OK] 备份完成！
-echo   - 物理备份: %BACKUP_DIR%
-echo   - Git: 已尝试提交并推送
+echo   - 物理备份到 %BACKUP_DIR%
+echo   - Git 已尝试提交并推送
 echo.
 pause
