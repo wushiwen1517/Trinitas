@@ -44,6 +44,7 @@ set HTTPS_PROXY=
 set HTTP_PROXY=
 set https_proxy=
 set http_proxy=
+set ALL_PROXY=
 git push >nul 2>&1
 if errorlevel 1 (
     echo [WARN] git push 失败（可能网络/代理/凭据问题）
