@@ -255,6 +255,22 @@
     }
     .assistant-streaming{display:inline-flex;align-items:center;gap:6px;color:var(--accent-2);font-size:12px}
 
+    /* ===== 系统状态回显（Pro/Auto 阶段提示，缓解等待焦虑）===== */
+    .system-state-badge{
+      display:inline-flex;align-items:center;gap:6px;
+      font-size:12px;font-style:italic;color:var(--muted);
+      padding:4px 10px;margin-bottom:8px;
+      background:var(--surface-2);border:1px solid var(--line);
+      border-radius:999px;max-width:100%;
+      animation:systemStateBreath 2s ease-in-out infinite;
+    }
+    .system-state-badge .system-state-dot{
+      width:6px;height:6px;border-radius:50%;background:var(--accent);
+      flex-shrink:0;animation:systemStatePulse 1.2s ease-in-out infinite;
+    }
+    @keyframes systemStateBreath{0%,100%{opacity:.85}50%{opacity:1}}
+    @keyframes systemStatePulse{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+
     /* ===== Composer ===== */
     .composer-wrap{
       padding:12px 10%;background:var(--bg);position:sticky;bottom:0;z-index:3;
@@ -514,6 +530,8 @@
     const INVISIBLE_HEARTBEAT_RE=/\u200b/g;
     const TRINITAS_STATS_RE=/\n?\[\[TRINITAS_STATS:(.*?)\]\]\n?/g;
     const TOKEN_STATS_RE=/\n?\[\[TOKEN_STATS:.*?\]\]\n?/g;
+    /** 系统状态通知：协议为 [[SYSTEM_STATE:{"type":"system_state","content":"..."}]]，用于 Pro/Auto 阶段回显 */
+    const SYSTEM_STATE_BLOCK_RE=/\n?\[\[SYSTEM_STATE:[\s\S]*?\}\]\]\n?/g;
     const MAX_CONTEXT_TOKENS=15000;
     let activeTimers={};
     const FINAL_PHASES=new Set(["FINAL","FINAL_FORCED"]);
@@ -624,11 +642,28 @@
     function getCurrentChat(){return chats[currentChatId]}
     function touchChat(cid){if(chats[cid])chats[cid].updatedAt=nowTs()}
     function addMessage(cid,msg){if(!chats[cid])return;chats[cid].messages.push(msg);touchChat(cid);persistChats()}
+    /** 从原始流文本中提取最后一次系统状态并返回其 content；不修改入参 */
+    function extractLastSystemState(raw){
+      const prefix="[[SYSTEM_STATE:", suffix="}]]";
+      let start=0, lastContent=null;
+      while(true){
+        const i=raw.indexOf(prefix,start);
+        if(i===-1)break;
+        const j=raw.indexOf(suffix,i);
+        if(j===-1)break;
+        const jsonStr=raw.substring(i+prefix.length,j+1);
+        try{const o=JSON.parse(jsonStr);if(o&&o.content)lastContent=o.content}catch(e){}
+        start=j+1;
+      }
+      return lastContent;
+    }
     function updateAssistantRaw(cid,mid,raw,streaming){
       const c=chats[cid];if(!c)return;const msg=c.messages.find(m=>m.id===mid);if(!msg)return;
       let sm;const re=/\n?\[\[TRINITAS_STATS:(.*?)\]\]\n?/g;
       while((sm=re.exec(raw))!==null){try{msg.stats=JSON.parse(sm[1])}catch{}}
-      msg.raw=raw.replace(/\n?\[\[TRINITAS_STATS:.*?\]\]\n?/g,"").replace(/\n?\[\[TOKEN_STATS:.*?\]\]\n?/g,"");
+      const lastState=extractLastSystemState(raw);
+      if(lastState!=null)msg.systemState=lastState;
+      msg.raw=raw.replace(/\n?\[\[TRINITAS_STATS:.*?\]\]\n?/g,"").replace(/\n?\[\[TOKEN_STATS:.*?\]\]\n?/g,"").replace(SYSTEM_STATE_BLOCK_RE,"");
       msg.streaming=!!streaming;touchChat(cid);persistChats();
     }
     function finalizeAssistantMessage(cid,mid){
@@ -704,6 +739,16 @@
         if(thinkBody)updateThinkingPhases(thinkBody,parsed,msg.streaming);
         const fc=existingCard.querySelector(".assistant-final-content");
         if(fc){fc.innerHTML=finalText?renderRichText(cleanInternalTags(finalText)):`<p style="color:var(--muted)">等待输出…</p>`}
+        /* 实时更新系统状态徽章 */
+        let badge=existingCard.querySelector(".system-state-badge");
+        if(msg.systemState){
+          if(!badge){
+            badge=document.createElement("div");badge.className="system-state-badge";badge.id="system-state-"+msg.id;
+            badge.innerHTML=`<span class="system-state-dot"></span><span class="system-state-text"></span>`;
+            existingCard.insertBefore(badge,existingCard.firstChild);
+          }
+          const textEl=badge.querySelector(".system-state-text");if(textEl)textEl.textContent=msg.systemState;
+        }else if(badge)badge.remove();
         updateContextBadge(existingCard);scrollToBottom();return;
       }
       const cr=bubble.getBoundingClientRect();if(cr.height>0)bubble.style.minHeight=cr.height+"px";
@@ -746,6 +791,15 @@
       const hasTP=parsed.phaseOrder.some(p=>!FINAL_PHASES.has(p));
       const finalText=parsed.finalText.trim()||(parsed.noPhaseText.trim()&&!parsed.hasFinalPhase?parsed.noPhaseText.trim():"");
 
+      /* 系统状态徽章：Pro/Auto 下实时显示当前阶段（Alpha/Beta/Gamma），小字号斜体 + 呼吸灯 */
+      if(msg.systemState){
+        const badge=document.createElement("div");
+        badge.className="system-state-badge";
+        badge.id="system-state-"+msg.id;
+        badge.innerHTML=`<span class="system-state-dot"></span><span class="system-state-text">${escapeHtml(msg.systemState)}</span>`;
+        card.appendChild(badge);
+      }
+
       if(hasTP||msg.streaming){
         const det=document.createElement("details");det.className="assistant-think";if(msg.streaming)det.open=true;
         const sum=document.createElement("summary");
@@ -780,6 +834,7 @@
       const fc=document.createElement("div");fc.className="assistant-final-content";
       if(finalText)fc.innerHTML=renderRichText(cleanInternalTags(finalText));
       else if(msg.streaming)fc.innerHTML=`<p style="color:var(--muted)">等待输出…</p>`;
+      else if(parsed.hasFinalPhase&&!(parsed.finalText||"").trim())fc.innerHTML=`<p style="color:var(--muted)">等待最终结论…</p>`;
       else{const fb=(msg.raw||msg.content||"").trim();fc.innerHTML=fb?renderRichText(cleanInternalTags(fb)):`<p style="color:var(--muted)">（无输出）</p>`}
       fw.appendChild(ft);fw.appendChild(fc);card.appendChild(fw);
 
@@ -944,9 +999,14 @@
           t+=Math.round((m.content||"").length/2);
           if(m.hasImage)t+=500;
         }else{
-          const evalTokens=m.stats&&(typeof m.stats.total_eval_tokens==="number"?m.stats.total_eval_tokens:m.stats.total_eval_count);
-          if(evalTokens!=null&&evalTokens>=0)t+=evalTokens;
-          else t+=Math.round((m.raw||m.content||"").length/2);
+          const s=m.stats;
+          const totalTokens=s&&typeof s.total_tokens==="number"?s.total_tokens:null;
+          const evalT=s&&(typeof s.total_eval_tokens==="number"?s.total_eval_tokens:s.total_eval_count);
+          const promptT=s&&(typeof s.total_prompt_tokens==="number"?s.total_prompt_tokens:s.total_prompt_eval_count);
+          if(totalTokens!=null&&totalTokens>=0){t+=totalTokens;}
+          else if(evalT!=null&&evalT>=0&&promptT!=null&&promptT>=0){t+=evalT+promptT;}
+          else if(evalT!=null&&evalT>=0){t+=evalT;}
+          else{t+=Math.round((m.raw||m.content||"").length/2);}
         }
       }
       return t;

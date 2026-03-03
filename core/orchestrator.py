@@ -1,6 +1,7 @@
 # core/orchestrator.py
 import asyncio
 import json as _json
+import logging
 import re as _re
 import time as _time
 import traceback
@@ -21,9 +22,9 @@ from core.config import (
     ENABLE_BETA_REVIEW, ENABLE_GAMMA_JUDGE,
     ALPHA_STAGE_TIMEOUT_SECONDS, BETA_STAGE_TIMEOUT_SECONDS, GAMMA_STAGE_TIMEOUT_SECONDS,
 )
-from core.alpha_engine import AlphaEngine
-from core.beta_engine import BetaEngine
-from core.gamma_engine import GammaEngine
+from core.alpha_engine import AlphaEngine, parse_hypotheses, ALPHA_MULTI_HYPOTHESIS_SYSTEM
+from core.beta_engine import BetaEngine, parse_attacks, BETA_ADVERSARIAL_SYSTEM
+from core.gamma_engine import GammaEngine, build_adversarial_prompt, GAMMA_CONFLICT_RESOLVER_SYSTEM
 from core.oculus_engine import OculusEngine
 from core.stage_manager import StageManager
 from core.retry_controller import RetryController
@@ -155,6 +156,11 @@ class Orchestrator:
 
     def _phase(self, name): return f"\n[[PHASE:{name}]]\n"
 
+    def _system_state_line(self, content: str):
+        """生成系统状态通知行，供前端解析并展示当前运行阶段（Pro/Auto 等待焦虑缓解）。
+        协议格式与 [[PHASE:xxx]]、[[TRINITAS_STATS:...]] 一致，为内联纯文本中的一段标记。"""
+        return f"\n[[SYSTEM_STATE:{_json.dumps({'type': 'system_state', 'content': content}, ensure_ascii=False)}]]\n"
+
     @staticmethod
     def _clean_final_answer(text):
         cleaned = _THINKING_RE.sub("", text)
@@ -243,6 +249,16 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
 }}
 ```"""
 
+    def _build_beta_adversarial_prompt(self, user_question: str, alpha_hypotheses_text: str) -> str:
+        """Pro/Auto 多假设链路：将用户问题与 Alpha 的多假设文本拼成 Beta 对抗性审查的 prompt。"""
+        return f"""[用户问题]
+{user_question}
+
+[Alpha 的多个候选假设]（请对每个假设输出 === ATTACK ON HYPOTHESIS N === / Target: / Detail: 格式的攻击块）
+{alpha_hypotheses_text.strip()}
+
+请对上述每一个假设分别输出一个攻击块，不要输出 JSON。"""
+
     def _build_alpha_rewrite_prompt(self, context_text, user_question, original, feedback):
         return f"""[上下文]
 {context_text}
@@ -274,13 +290,16 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
             else: yield True, hb
 
     async def _collect_with_heartbeat(self, engine, prompt, all_stats, system=None):
-        """收集流式输出为完整文本（内部缓冲），同时 yield 心跳防超时"""
+        """收集流式输出为完整文本（内部缓冲），同时 yield 内容与心跳供前端阶段卡片展示并防超时"""
         buf = ""
         async for is_hb, chunk in self._with_heartbeat(engine.execute(prompt=prompt, system=system)):
             if is_hb:
                 yield chunk  # 心跳透传给前端，防止连接断开
             else:
-                c, s = self._strip_token_stats(chunk); all_stats.extend(s); buf += c
+                c, s = self._strip_token_stats(chunk)
+                all_stats.extend(s)
+                buf += c
+                yield c  # 将内容写入流，供前端 parsePhaseStream 归入当前阶段并展示
         self._last_collected = buf  # 通过实例变量传回结果
 
     async def _stream_with_stage_timeout(self, aiter, stage_name: str, stage_seconds: float):
@@ -430,44 +449,127 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
 
             # ===== Alpha 生成 =====
             yield self._phase("ALPHA_GENERATION")
+            if need_review:
+                yield self._system_state_line("[Alpha 正在生成多假设…]")
             alpha_prompt = self._build_alpha_prompt(context_text, working_message, risk.level)
             tp = _time.monotonic()
 
             if need_review:
-                # 审查模式：Alpha 内部缓冲，但心跳透传给前端防超时；带阶段超时
+                # Pro/Auto 多假设链路：Alpha 使用多假设系统提示，内部缓冲，心跳透传防超时
                 self._last_collected = ""
                 async for hb_chunk in self._stream_with_stage_timeout(
-                    self._collect_with_heartbeat(self.alpha_engine, alpha_prompt, all_stats, system=ALPHA_SYSTEM),
+                    self._collect_with_heartbeat(
+                        self.alpha_engine, alpha_prompt, all_stats, system=ALPHA_MULTI_HYPOTHESIS_SYSTEM
+                    ),
                     "Alpha", ALPHA_STAGE_TIMEOUT_SECONDS
                 ):
                     yield hb_chunk
                 alpha_draft = self._last_collected
-                yield f"Alpha 草稿已生成（{len(alpha_draft)} 字），进入审查...\n"
+                timings["ALPHA"] = round(_time.monotonic() - tp, 2)
+                # Fallback：正则提取失败时用原文作为下游输入，保证不崩溃、不死锁
+                alpha_hypotheses_text = alpha_draft
+                try:
+                    hypotheses_blocks = parse_hypotheses(alpha_draft)
+                    if hypotheses_blocks:
+                        alpha_hypotheses_text = "\n\n".join(hypotheses_blocks)
+                    else:
+                        logging.warning(
+                            "[Orchestrator] Alpha 多假设正则未提取到有效块，使用原始输出作为下游输入"
+                        )
+                except Exception as e:
+                    logging.warning("[Orchestrator] Alpha parse_hypotheses 异常: %s，使用原始输出", e)
+                    alpha_hypotheses_text = alpha_draft
+
+                # ===== 步骤 B：Beta 定向攻击 =====
+                yield self._phase("BETA_REVIEW")
+                yield self._system_state_line("[Beta 正在进行攻击分析…]")
+                beta_prompt = self._build_beta_adversarial_prompt(working_message, alpha_hypotheses_text)
+                tp_beta = _time.monotonic()
+                self._last_collected = ""
+                async for hb in self._stream_with_stage_timeout(
+                    self._collect_with_heartbeat(
+                        self.beta_engine, beta_prompt, all_stats, system=BETA_ADVERSARIAL_SYSTEM
+                    ),
+                    "Beta", BETA_STAGE_TIMEOUT_SECONDS
+                ):
+                    yield hb
+                beta_raw = self._last_collected
+                timings["BETA"] = round(_time.monotonic() - tp_beta, 2)
+                beta_attacks_text = beta_raw
+                try:
+                    attacks = parse_attacks(beta_raw)
+                    if attacks:
+                        beta_attacks_text = "\n\n".join([a.get("raw", "") for a in attacks if a.get("raw")])
+                    else:
+                        logging.warning(
+                            "[Orchestrator] Beta 攻击块正则未提取到有效块，使用原始输出作为下游输入"
+                        )
+                except Exception as e:
+                    logging.warning("[Orchestrator] Beta parse_attacks 异常: %s，使用原始输出", e)
+                    beta_attacks_text = beta_raw
+
+                # ===== 步骤 C：Gamma 在后台静默思考，不向用户流式输出原始内容（避免 <think> 等英文废话暴露）=====
+                yield self._phase("GAMMA_FINAL_REVIEW")
+                yield self._system_state_line("[Gamma 正在进行冲突裁决…]")
+                gamma_prompt = build_adversarial_prompt(working_message, alpha_hypotheses_text, beta_attacks_text)
+                tp_gamma = _time.monotonic()
+                gamma_final = ""
+                async for item in self._stream_with_stage_timeout(
+                    self._with_heartbeat(
+                        self.gamma_engine.execute(prompt=gamma_prompt, system=GAMMA_CONFLICT_RESOLVER_SYSTEM)
+                    ),
+                    "Gamma", GAMMA_STAGE_TIMEOUT_SECONDS
+                ):
+                    is_hb, chunk = item
+                    if is_hb:
+                        yield chunk  # 仅透传心跳，保持连接
+                    else:
+                        c, s = self._strip_token_stats(chunk)
+                        all_stats.extend(s)
+                        gamma_final += c  # 仅缓冲，不 yield 原始内容，避免 <think> 等暴露给前端
+                timings["GAMMA"] = round(_time.monotonic() - tp_gamma, 2)
+                # 剔除 <think> 及内部标签后得到纯净结论，严格保留现有 _clean_final_answer 调用
+                result = self._clean_final_answer(gamma_final)
+                self.memory.save_message(chat_id, "AI", result)
+                # 更新系统状态为完成，避免前端顶部仍显示「Gamma 正在进行冲突裁决…」
+                yield self._system_state_line("思考完成")
+                # 将裁决结论写入 GAMMA_FINAL_REVIEW 阶段，使「Gamma 终审裁决」卡片有内容可展示
+                yield result
+                # 将 FINAL 阶段与结论同块发送，避免前端先收到 [[PHASE:FINAL]] 再收结论时误把整段 raw 当主气泡内容
+                yield self._phase("FINAL") + result
+                yield f"\n[[TRINITAS_STATS:{_json.dumps(self._build_stats(t0, timings, all_stats))}]]\n"
+                return
             else:
-                # Instant 模式：直接流式输出，带阶段超时
+                # Instant 模式：单脑直接流式输出，逻辑保持不变
                 alpha_draft = ""
                 async for item in self._stream_with_stage_timeout(
                     self._with_heartbeat(self.alpha_engine.execute(prompt=alpha_prompt, system=ALPHA_SYSTEM)),
                     "Alpha", ALPHA_STAGE_TIMEOUT_SECONDS
                 ):
                     is_hb, chunk = item
-                    if is_hb: yield chunk
+                    if is_hb:
+                        yield chunk
                     else:
-                        c, s = self._strip_token_stats(chunk); all_stats.extend(s); alpha_draft += c; yield c
+                        c, s = self._strip_token_stats(chunk)
+                        all_stats.extend(s)
+                        alpha_draft += c
+                        yield c
             timings["ALPHA"] = round(_time.monotonic() - tp, 2)
 
-            # ===== No review → output directly =====
+            # ===== No review（Instant）→ 直接输出并结束 =====
             if not need_review:
                 final = self._clean_final_answer(alpha_draft)
                 self.memory.save_message(chat_id, "AI", final)
-                yield self._phase("FINAL"); yield final
+                yield self._phase("FINAL") + final
                 yield f"\n[[TRINITAS_STATS:{_json.dumps(self._build_stats(t0, timings, all_stats))}]]\n"
                 return
 
-            # ===== Beta 审查（先跑 Beta，Gamma 需要看到 Beta 结果）=====
+            # ===== 以下为兼容旧 Auto 非多假设路径（若后续仅保留 Pro/Auto 多假设链可删除本段）=====
+            # 当 need_review 但未走上方 return 时不会执行到此；保留旧 JSON 审查路径以备回退
             beta_raw = ""
             if risk.need_beta:
                 yield self._phase("BETA_REVIEW")
+                yield self._system_state_line("[Beta 正在进行攻击分析…]")
                 beta_prompt = self._build_beta_prompt(working_message, alpha_draft)
                 tp_beta = _time.monotonic()
                 self._last_collected = ""
@@ -481,10 +583,10 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
                 if beta_raw.strip():
                     yield f"\n{beta_raw.strip()}\n"
 
-            # ===== Gamma 终审（能看到 Beta 结果）=====
             gamma_raw = ""
             if risk.need_gamma:
                 yield self._phase("GAMMA_FINAL_REVIEW")
+                yield self._system_state_line("[Gamma 正在构建冲突图并裁决…]")
                 gamma_prompt = self._build_gamma_prompt(working_message, alpha_draft, beta_raw)
                 tp_gamma = _time.monotonic()
                 self._last_collected = ""
@@ -498,19 +600,14 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
                 if gamma_raw.strip():
                     yield f"\n{gamma_raw.strip()}\n"
 
-            # ===== 解析审查结果 =====
             needs_rewrite = False
             combined_feedback = ""
-
-            # Beta 解析
             beta_json = self._parse_json_review(beta_raw)
             beta_fail = False
             if beta_json and isinstance(beta_json, dict):
                 beta_fail = beta_json.get("verdict", "").upper() == "FAIL"
             elif beta_raw.strip():
                 beta_fail = "FAIL" in beta_raw.upper()
-
-            # Gamma 解析
             gamma_json = self._parse_json_review(gamma_raw)
             gamma_fail = False
             if gamma_json and isinstance(gamma_json, dict):
@@ -548,9 +645,9 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
                         parts.append(f"[Gamma终审]\n{gamma_raw.strip()[:500]}")
                 combined_feedback = "\n\n".join(parts)
 
-            # ===== Rewrite or output =====
             if needs_rewrite and combined_feedback.strip():
                 yield self._phase("ALPHA_REWRITE")
+                yield self._system_state_line("[Alpha 正在根据反馈重写…]")
                 rp = self._build_alpha_rewrite_prompt(context_text, working_message, alpha_draft, combined_feedback)
                 final_ans = ""
                 tp = _time.monotonic()
@@ -568,12 +665,14 @@ F)幸存者偏差 G)规模谬误 H)忽略副作用 I)成本不现实 J)伪问题
                 result = self._clean_final_answer(alpha_draft)
 
             self.memory.save_message(chat_id, "AI", result)
-            yield self._phase("FINAL"); yield result
+            yield self._system_state_line("思考完成")
+            yield self._phase("FINAL") + result
             yield f"\n[[TRINITAS_STATS:{_json.dumps(self._build_stats(t0, timings, all_stats))}]]\n"
 
         except StageTimeoutError as e:
-            self.memory.save_message(chat_id, "AI", f"[阶段超时] {e.stage_name} 未在 {e.limit_seconds} 秒内完成。")
-            yield self._phase("FINAL")
+            err_msg = f"[阶段超时] {e.stage_name} 未在 {e.limit_seconds} 秒内完成。请简化问题或稍后重试。"
+            self.memory.save_message(chat_id, "AI", err_msg)
+            yield self._phase("FINAL") + err_msg
             yield f"\n[[TRINITAS_STATS:{_json.dumps(self._build_stats(t0, {}, []))}]]\n"
         except Exception as e:
             yield f"\n\n[崩溃]: {type(e).__name__} - {e}\n{traceback.format_exc()}"
