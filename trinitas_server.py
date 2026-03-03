@@ -5,13 +5,12 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-try:
-    from core.integrity_guard import ensure_integrity as _ensure_integrity
-
-    _ensure_integrity()
-except Exception:
-    # 启动自检失败不应阻断服务
-    pass
+# 已关闭启动时 integrity_guard，避免用备份覆盖当前代码。需要时可在本机手动执行 ensure_integrity()。
+# try:
+#     from core.integrity_guard import ensure_integrity as _ensure_integrity
+#     _ensure_integrity()
+# except Exception:
+#     pass
 
 from core.orchestrator import Orchestrator
 from core.config import API_KEY

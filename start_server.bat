@@ -1,4 +1,4 @@
 @echo off
 cd /d D:\Trinitas
-D:\Trinitas\.venv\Scripts\python.exe -c "from core.integrity_guard import ensure_integrity; ensure_integrity()" >nul 2>&1
+REM 已关闭启动时自检恢复，避免用备份覆盖当前代码。需要恢复时请手动运行 integrity_guard 或从备份复制。
 D:\Trinitas\.venv\Scripts\python.exe -m uvicorn trinitas_server:app --host 0.0.0.0 --port 8181
