@@ -1,0 +1,33 @@
+DETECTED_REVERT:
+- marker_missing:web\\index.html:modeSelector
+backup_dir=D:\Trinitas_backup
+
+DETECTED_REVERT:
+- marker_missing:core\orchestrator.py:CONTEXT_BUILD
+backup_dir=D:\Trinitas_backup
+
+DETECTED_REVERT:
+- marker_missing:core\orchestrator.py:CONTEXT_BUILD
+- marker_missing:web\\index.html:modeSelector
+backup_dir=D:\Trinitas_backup
+
+DETECTED_REVERT:
+- marker_missing:core\orchestrator.py:CONTEXT_BUILD
+backup_dir=D:\Trinitas_backup
+
+DETECTED_REVERT:
+- marker_missing:core\orchestrator.py:CONTEXT_BUILD
+backup_dir=D:\Trinitas_backup
+
+DETECTED_REVERT:
+- marker_missing:core\orchestrator.py:CONTEXT_BUILD
+backup_dir=D:\Trinitas_backup
+
+DETECTED_REVERT:
+- marker_missing:core\orchestrator.py:CONTEXT_BUILD
+backup_dir=D:\Trinitas_backup
+
+DETECTED_REVERT:
+- marker_missing:core\orchestrator.py:CONTEXT_BUILD
+backup_dir=D:\Trinitas_backup
+

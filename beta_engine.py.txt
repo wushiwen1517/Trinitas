@@ -1,0 +1,34 @@
+# core/alpha_engine.py
+
+import httpx
+from core.config import MODEL_ALPHA, OLLAMA_URL
+from core.failure_guard import safe_stream_model
+
+
+class AlphaEngine:
+
+    def __init__(self):
+        self.model = MODEL_ALPHA
+
+    async def stream(self, prompt):
+        """
+        Alpha 纯流式调用
+        """
+        async with httpx.AsyncClient(timeout=None) as client:
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": True
+            }
+
+            async for chunk in safe_stream_model(client, OLLAMA_URL, payload):
+                yield chunk
+
+    async def generate_full(self, prompt):
+        """
+        非流式完整拼接
+        """
+        result = ""
+        async for chunk in self.stream(prompt):
+            result += chunk
+        return result
